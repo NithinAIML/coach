@@ -1,0 +1,54 @@
+### health
+GET http://localhost:8080/api/health
+
+### team registration
+POST http://localhost:8080/api/team-registration
+Content-Type: application/json
+
+{
+  "teamName":"Support Team",
+  "department":"ESAF",
+  "domain":"Support",
+  "contactEmail":"lead@example.com",
+  "description":"Handles tickets"
+}
+
+### registration status
+GET http://localhost:8080/api/registration-status?email=lead@example.com
+
+### presign files
+POST http://localhost:8080/api/presign-files
+Content-Type: application/json
+
+{
+  "contactEmail":"lead@example.com",
+  "files":[
+    {"name":"handbook.pdf","type":"application/pdf","size":123}
+  ]
+}
+
+### save sources
+POST http://localhost:8080/api/knowledge-sources
+Content-Type: application/json
+
+{
+  "contactEmail":"lead@example.com",
+  "selected":["Confluence","File Upload"],
+  "confluence":{
+    "name":"IAM Space",
+    "url":"https://company.atlassian.net/wiki/spaces/IAM",
+    "description":"Policies",
+    "autoRefresh":true,
+    "frequency":"Weekly",
+    "time":"09:00"
+  },
+  "fileUpload":{
+    "name":"Handbooks",
+    "description":"PDFs",
+    "autoRefresh":true,
+    "frequency":"Weekly",
+    "time":"09:00",
+    "filesMeta":[{"name":"handbook.pdf","type":"application/pdf","size":123}],
+    "filesS3":[{"name":"handbook.pdf","key":"coach/<hash>/uploads/..."}]
+  }
+}
