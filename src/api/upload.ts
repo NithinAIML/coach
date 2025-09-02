@@ -73,63 +73,70 @@
 //   }
 // }
 
-// src/pages/api/upload.ts
-import type { NextApiRequest, NextApiResponse } from "next";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const REGION = process.env.AWS_REGION || "us-east-1";
-const BUCKET = process.env.COACH_BUCKET as string;
-const PREFIX = (process.env.COACH_PREFIX || "coach/").replace(/^\/+|\/+$/g, "") + "/";
+import https from 'https';
+import fs from 'fs';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+
+// ---- env ----
+const REGION = process.env.AWS_REGION!;
+const BUCKET = process.env.COACH_BUCKET!;
+const PREFIX = process.env.COACH_PREFIX || 'coach/';
+
+// Build an HTTPS agent that trusts your enterprise CA bundle if provided.
+function buildHttpsAgent() {
+  const caPath = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
+  if (caPath && fs.existsSync(caPath)) {
+    return new https.Agent({
+      keepAlive: true,
+      ca: fs.readFileSync(caPath),
+    });
+  }
+  return new https.Agent({ keepAlive: true });
+}
 
 const s3 = new S3Client({
   region: REGION,
-  // Credentials auto from env (AWS_ACCESS_KEY_ID, etc)
+  requestHandler: new NodeHttpHandler({ httpsAgent: buildHttpsAgent() }),
 });
 
-type ReqFile = { name: string; type?: string; size?: number };
-type ReqBody = { teamEmail: string; files: ReqFile[] };
+type IncomingFile = { name: string; type?: string };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  if (!BUCKET) return res.status(500).json({ error: "COACH_BUCKET not configured" });
-
-  let body: ReqBody;
-  try {
-    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON" });
-  }
-
-  if (!body?.teamEmail || typeof body.teamEmail !== "string") {
-    return res.status(400).json({ error: "teamEmail is required" });
-  }
-  if (!Array.isArray(body.files) || body.files.length === 0) {
-    return res.status(400).json({ error: "files is required" });
-  }
-
-  const teamKey = encodeURIComponent(body.teamEmail.toLowerCase().trim());
-  const nowPrefix = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!REGION) return res.status(500).json({ error: 'Missing AWS_REGION env' });
+  if (!BUCKET) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
 
   try {
-    const urls = await Promise.all(
-      body.files.map(async (f) => {
-        const cleanName = f.name.replace(/[^\w.\-]+/g, "_");
-        const key = `${PREFIX}${teamKey}/uploads/${nowPrefix}/${Date.now()}-${cleanName}`;
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+    const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail; // support either
+    const files: IncomingFile[] = Array.isArray(body?.files) ? body.files : [];
+
+    if (!contactEmail) return res.status(400).json({ error: 'contactEmail is required' });
+    if (files.length === 0) return res.status(400).json({ error: 'files[] required' });
+
+    const safeEmail = encodeURIComponent(contactEmail);
+
+    const presigned = await Promise.all(
+      files.map(async (f) => {
+        if (!f?.name) throw new Error('file name missing');
+        const key = `${PREFIX}uploads/${safeEmail}/${encodeURIComponent(f.name)}`;
         const cmd = new PutObjectCommand({
           Bucket: BUCKET,
           Key: key,
-          ContentType: f.type || "application/octet-stream",
-          // ACL: "private", // default
+          ContentType: f.type || 'application/octet-stream',
         });
-        const url = await getSignedUrl(s3, cmd, { expiresIn: 900 }); // 15 minutes
+        const url = await getSignedUrl(s3, cmd, { expiresIn: 60 * 10 }); // 10 minutes
         return { name: f.name, key, url };
       })
     );
 
-    return res.status(200).json({ ok: true, urls });
-  } catch (e: any) {
-    console.error("presign error:", e);
-    return res.status(500).json({ error: e?.message || "Failed to create presigned URLs" });
+    return res.status(200).json({ ok: true, presigned });
+  } catch (err: any) {
+    console.error('Presign error:', err);
+    return res.status(500).json({ error: err?.message || 'presign failed' });
   }
 }

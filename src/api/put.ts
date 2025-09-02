@@ -69,69 +69,63 @@
 //   }
 // }
 
-// src/pages/api/put.ts
-import type { NextApiRequest, NextApiResponse } from "next";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
-const REGION = process.env.AWS_REGION || "us-east-1";
-const BUCKET = process.env.COACH_BUCKET as string;
-const PREFIX = (process.env.COACH_PREFIX || "coach/").replace(/^\/+|\/+$/g, "") + "/";
+import https from 'https';
+import fs from 'fs';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+
+// ---- env ----
+const REGION = process.env.AWS_REGION!;
+const BUCKET = process.env.COACH_BUCKET!;
+const PREFIX = process.env.COACH_PREFIX || 'coach/';
+
+// Build an HTTPS agent that trusts your enterprise CA bundle if provided.
+function buildHttpsAgent() {
+  const caPath = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
+  if (caPath && fs.existsSync(caPath)) {
+    return new https.Agent({
+      keepAlive: true,
+      ca: fs.readFileSync(caPath),
+    });
+  }
+  return new https.Agent({ keepAlive: true });
+}
 
 const s3 = new S3Client({
   region: REGION,
-  // Credentials will be picked up from env automatically if set.
-  // Leave empty for default provider chain.
+  requestHandler: new NodeHttpHandler({ httpsAgent: buildHttpsAgent() }),
 });
 
-type Body = {
-  kind: "registration" | "sources";
-  teamEmail: string;
-  [k: string]: any;
-};
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  if (!BUCKET) return res.status(500).json({ error: "COACH_BUCKET not configured" });
-
-  let body: Body;
-  try {
-    body = req.body && typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON" });
-  }
-
-  if (!body?.kind) return res.status(400).json({ error: "kind is required" });
-  if (!body?.teamEmail || typeof body.teamEmail !== "string") {
-    return res.status(400).json({ error: "teamEmail is required" });
-  }
-
-  // Normalize team key (email) into path-safe token
-  const teamKey = encodeURIComponent(body.teamEmail.toLowerCase().trim());
-
-  const now = new Date();
-  const ts = now.toISOString().replace(/[:.]/g, "-"); // 2025-08-28T09-12-33-123Z
-  let key: string;
-
-  if (body.kind === "registration") {
-    key = `${PREFIX}${teamKey}/registration.json`;
-  } else if (body.kind === "sources") {
-    key = `${PREFIX}${teamKey}/knowledge/sources-${ts}.json`;
-  } else {
-    return res.status(400).json({ error: "Unknown kind" });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!REGION) return res.status(500).json({ error: 'Missing AWS_REGION env' });
+  if (!BUCKET) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
 
   try {
-    const put = new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: Buffer.from(JSON.stringify(body, null, 2), "utf-8"),
-      ContentType: "application/json",
-      // ServerSideEncryption: "AES256", // uncomment if you want SSE
-    });
-    await s3.send(put);
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+    const kind = body?.kind;
+    const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail; // support either
+
+    if (!kind) return res.status(400).json({ error: 'kind is required' });
+    if (!contactEmail) return res.status(400).json({ error: 'contactEmail is required' });
+
+    const safeEmail = encodeURIComponent(contactEmail);
+    const key = `${PREFIX}${kind}/${safeEmail}/${Date.now()}.json`;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: JSON.stringify(body),
+        ContentType: 'application/json',
+      })
+    );
+
     return res.status(200).json({ ok: true, key });
-  } catch (e: any) {
-    console.error("S3 put error:", e);
-    return res.status(500).json({ error: e?.message || "Failed to save to S3" });
+  } catch (err: any) {
+    console.error('S3 put error:', err);
+    return res.status(500).json({ error: err?.message || 'S3 put failed' });
   }
 }
