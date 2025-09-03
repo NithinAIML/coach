@@ -74,23 +74,28 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 import https from 'https';
 import fs from 'fs';
+import path from 'path';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 
-// ---- env ----
 const REGION = process.env.AWS_REGION!;
 const BUCKET = process.env.COACH_BUCKET!;
 const PREFIX = process.env.COACH_PREFIX || 'coach/';
 
-// Build an HTTPS agent that trusts your enterprise CA bundle if provided.
 function buildHttpsAgent() {
-  const caPath = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
-  if (caPath && fs.existsSync(caPath)) {
-    return new https.Agent({
-      keepAlive: true,
-      ca: fs.readFileSync(caPath),
-    });
+  const raw = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
+  if (!raw) return new https.Agent({ keepAlive: true });
+
+  const abs = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+  try {
+    const ca = fs.readFileSync(abs);
+    return new https.Agent({ keepAlive: true, ca });
+  } catch (e) {
+    console.warn(
+      `[put.ts] Could not read CA bundle at ${abs}. Using default trust store. Error:`,
+      (e as any)?.message || e
+    );
+    return new https.Agent({ keepAlive: true });
   }
-  return new https.Agent({ keepAlive: true });
 }
 
 const s3 = new S3Client({
@@ -106,7 +111,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const kind = body?.kind;
-    const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail; // support either
+    const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail;
 
     if (!kind) return res.status(400).json({ error: 'kind is required' });
     if (!contactEmail) return res.status(400).json({ error: 'contactEmail is required' });
