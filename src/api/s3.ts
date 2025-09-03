@@ -1,26 +1,70 @@
-// src/pages/api/s3.ts
-import type { NextApiRequest, NextApiResponse } from "next";
-import { S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
+// src/utils/s3.ts
+type PresignInput = { name: string; type?: string };
 
-const REGION = process.env.AWS_REGION || "us-east-1";
-const BUCKET = process.env.COACH_BUCKET!;
-const s3 = new S3Client({ region: REGION });
+function ensureEmailFields(payload: any) {
+  const email =
+    payload?.contactEmail ||
+    payload?.teamEmail ||
+    payload?.email ||
+    payload?.userEmail ||
+    '';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-  try {
-    const { key } = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    if (!key) return res.status(400).json({ error: "key required" });
-    if (!BUCKET) return res.status(500).json({ error: "Missing COACH_BUCKET env" });
+  if (!email) return payload;
 
-    try {
-      await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
-      return res.status(200).json({ ok: true, exists: true });
-    } catch {
-      return res.status(200).json({ ok: true, exists: false });
-    }
-  } catch (err: any) {
-    console.error("/api/s3 error:", err);
-    return res.status(500).json({ ok: false, error: err?.message || "Unknown error" });
+  return {
+    ...payload,
+    contactEmail: email,
+    teamEmail: email,
+    email, // for /api/upload
+  };
+}
+
+export async function putS3(payload: any): Promise<Response> {
+  const body = JSON.stringify(ensureEmailFields(payload));
+  const res = await fetch('/api/put', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  return res;
+}
+
+export async function presignFiles(
+  email: string,
+  files: File[] | PresignInput[]
+): Promise<Array<{ name: string; key: string; url: string }>> {
+  const thin = Array.from(files).map((f: any) => ({
+    name: f.name,
+    type: f.type || 'application/octet-stream',
+  }));
+
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ensureEmailFields({ email, files: thin })),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || 'Failed to create presigned URLs');
   }
+
+  const data = await res.json();
+  return data.uploads || [];
+}
+
+export async function uploadWithPresigned(
+  presigned: { url: string; key: string; name: string },
+  file: File | Blob
+) {
+  const put = await fetch(presigned.url, {
+    method: 'PUT',
+    headers: { 'Content-Type': (file as any).type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!put.ok) {
+    const text = await put.text().catch(() => '');
+    throw new Error(`Upload failed for ${presigned.name}: ${text || put.statusText}`);
+  }
+  return { ok: true, key: presigned.key };
 }
