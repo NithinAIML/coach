@@ -1,136 +1,120 @@
-// // src/pages/api/put.ts
-// import type { NextApiRequest, NextApiResponse } from "next";
-// import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+// import type { NextApiRequest, NextApiResponse } from 'next';
+// import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
-// const REGION = process.env.AWS_REGION || "us-east-1";
+// import https from 'https';
+// import fs from 'fs';
+// import path from 'path';
+// import { NodeHttpHandler } from '@smithy/node-http-handler';
+
+// const REGION = process.env.AWS_REGION!;
 // const BUCKET = process.env.COACH_BUCKET!;
-// const PREFIX = (process.env.COACH_PREFIX || "coach/teams").replace(/^\/+|\/+$/g, "");
+// const PREFIX = process.env.COACH_PREFIX || 'coach/';
 
-// const s3 = new S3Client({ region: REGION });
+// function buildHttpsAgent() {
+//   const raw = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
+//   if (!raw) return new https.Agent({ keepAlive: true });
 
-// function keyJoin(...parts: string[]) {
-//   return parts.filter(Boolean).map(p => p.replace(/^\/+|\/+$/g, "")).join("/");
+//   const abs = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+//   try {
+//     const ca = fs.readFileSync(abs);
+//     return new https.Agent({ keepAlive: true, ca });
+//   } catch (e) {
+//     console.warn(
+//       `[put.ts] Could not read CA bundle at ${abs}. Using default trust store. Error:`,
+//       (e as any)?.message || e
+//     );
+//     return new https.Agent({ keepAlive: true });
+//   }
 // }
-// function ts() {
-//   const d = new Date();
-//   return d.toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
-// }
+
+// const s3 = new S3Client({
+//   region: REGION,
+//   requestHandler: new NodeHttpHandler({ httpsAgent: buildHttpsAgent() }),
+// });
 
 // export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-//   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+//   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+//   if (!REGION) return res.status(500).json({ error: 'Missing AWS_REGION env' });
+//   if (!BUCKET) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
+
 //   try {
-//     if (!BUCKET) return res.status(500).json({ error: "Missing COACH_BUCKET env" });
-//     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+//     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+//     const kind = body?.kind;
+//     const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail;
 
-//     const kind = String(body?.kind || "").toLowerCase(); // "registration" | "sources" | ...
-//     const teamEmail = String(body?.teamEmail || "").trim();
-//     if (!kind || !teamEmail) return res.status(400).json({ error: "teamEmail and kind are required" });
+//     if (!kind) return res.status(400).json({ error: 'kind is required' });
+//     if (!contactEmail) return res.status(400).json({ error: 'contactEmail is required' });
 
-//     const stamp = ts();
-//     let key: string;
-//     switch (kind) {
-//       case "registration":
-//         key = keyJoin(PREFIX, teamEmail, "registration", `${stamp}.json`);
-//         break;
-//       case "sources":
-//         key = keyJoin(PREFIX, teamEmail, "sources", `${stamp}.json`);
-//         break;
-//       default:
-//         key = keyJoin(PREFIX, teamEmail, "misc", `${kind}-${stamp}.json`);
-//     }
+//     const safeEmail = encodeURIComponent(contactEmail);
+//     const key = `${PREFIX}${kind}/${safeEmail}/${Date.now()}.json`;
 
-//     // write timestamped
-//     await s3.send(new PutObjectCommand({
-//       Bucket: BUCKET,
-//       Key: key,
-//       Body: Buffer.from(JSON.stringify(body, null, 2)),
-//       ContentType: "application/json",
-//     }));
+//     await s3.send(
+//       new PutObjectCommand({
+//         Bucket: BUCKET,
+//         Key: key,
+//         Body: JSON.stringify(body),
+//         ContentType: 'application/json',
+//       })
+//     );
 
-//     // update latest pointer
-//     const latestKey =
-//       kind === "registration"
-//         ? keyJoin(PREFIX, teamEmail, "registration", "latest.json")
-//         : kind === "sources"
-//         ? keyJoin(PREFIX, teamEmail, "sources", "latest.json")
-//         : keyJoin(PREFIX, teamEmail, "misc", `latest-${kind}.json`);
-
-//     await s3.send(new PutObjectCommand({
-//       Bucket: BUCKET,
-//       Key: latestKey,
-//       Body: Buffer.from(JSON.stringify({ ...body, _latestKeyOf: key }, null, 2)),
-//       ContentType: "application/json",
-//     }));
-
-//     return res.status(200).json({ ok: true, key, latestKey });
+//     return res.status(200).json({ ok: true, key });
 //   } catch (err: any) {
-//     console.error("/api/put error:", err);
-//     return res.status(500).json({ ok: false, error: err?.message || "Unknown error" });
+//     console.error('S3 put error:', err);
+//     return res.status(500).json({ error: err?.message || 'S3 put failed' });
 //   }
 // }
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-
 import https from 'https';
 import fs from 'fs';
-import path from 'path';
-import { NodeHttpHandler } from '@smithy/node-http-handler';
 
-const REGION = process.env.AWS_REGION!;
-const BUCKET = process.env.COACH_BUCKET!;
-const PREFIX = process.env.COACH_PREFIX || 'coach/';
-
-function buildHttpsAgent() {
-  const raw = process.env.AWS_CA_BUNDLE || process.env.NODE_EXTRA_CA_CERTS;
-  if (!raw) return new https.Agent({ keepAlive: true });
-
-  const abs = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-  try {
-    const ca = fs.readFileSync(abs);
-    return new https.Agent({ keepAlive: true, ca });
-  } catch (e) {
-    console.warn(
-      `[put.ts] Could not read CA bundle at ${abs}. Using default trust store. Error:`,
-      (e as any)?.message || e
-    );
-    return new https.Agent({ keepAlive: true });
-  }
+function sanitizeEmail(e: string) {
+  return e.replace(/@/g, '_at_').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-const s3 = new S3Client({
-  region: REGION,
-  requestHandler: new NodeHttpHandler({ httpsAgent: buildHttpsAgent() }),
-});
+function getHttpsAgent() {
+  const caPath = process.env.CUSTOM_CA_PEM_PATH || process.env.AWS_CA_BUNDLE;
+  if (caPath && fs.existsSync(caPath)) {
+    return new https.Agent({ keepAlive: true, ca: fs.readFileSync(caPath) });
+  }
+  return new https.Agent({ keepAlive: true });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!REGION) return res.status(500).json({ error: 'Missing AWS_REGION env' });
-  if (!BUCKET) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+
+  const bucket = process.env.COACH_BUCKET;
+  const region = process.env.AWS_REGION || 'us-east-1';
+  if (!bucket) return res.status(500).json({ ok: false, error: 'Missing COACH_BUCKET env' });
+
+  // Body can be string or already parsed
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  const kind = (body.kind || '').toString().trim();
+
+  // Accept either `contactEmail` or `teamEmail`
+  const email = ((body.contactEmail || body.teamEmail || '') as string).trim();
+  if (!kind)  return res.status(400).json({ ok: false, error: 'kind is required' });
+  if (!email) return res.status(400).json({ ok: false, error: 'teamEmail/contactEmail is required' });
+
+  const emailSafe = sanitizeEmail(email);
+  const key = `coach/${emailSafe}/${kind}.json`;
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const kind = body?.kind;
-    const contactEmail: string | undefined = body?.contactEmail || body?.teamEmail;
+    const s3 = new S3Client({ region, requestHandler: { ...new (require('@aws-sdk/node-http-handler').NodeHttpHandler)({ httpsAgent: getHttpsAgent() }) } as any });
 
-    if (!kind) return res.status(400).json({ error: 'kind is required' });
-    if (!contactEmail) return res.status(400).json({ error: 'contactEmail is required' });
+    const put = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: JSON.stringify(body, null, 2),
+      ContentType: 'application/json',
+    });
 
-    const safeEmail = encodeURIComponent(contactEmail);
-    const key = `${PREFIX}${kind}/${safeEmail}/${Date.now()}.json`;
-
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: key,
-        Body: JSON.stringify(body),
-        ContentType: 'application/json',
-      })
-    );
-
-    return res.status(200).json({ ok: true, key });
+    await s3.send(put);
+    return res.status(200).json({ ok: true, key, message: 'Saved to S3' });
   } catch (err: any) {
     console.error('S3 put error:', err);
-    return res.status(500).json({ error: err?.message || 'S3 put failed' });
+    const msg = err?.message || 'S3 put failed';
+    return res.status(500).json({ ok: false, error: msg });
   }
 }
