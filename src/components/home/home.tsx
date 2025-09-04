@@ -1065,6 +1065,8 @@
 // pages/home.tsx (or wherever your component lives)
 // Drop-in replacement
 
+// src/components/home/home.tsx
+// src/components/home/home.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './home.module.scss';
 import { putS3, presignFiles, uploadWithPresigned } from '@/utils/s3';
@@ -1215,11 +1217,12 @@ const SelfServicePortal: React.FC = () => {
   }, [form]);
   const isStep1Valid = Object.keys(errors).length === 0;
 
-  // New: submission states
+  // Submission states
   const [savedStep1, setSavedStep1] = useState(false);
   const [savingStep1, setSavingStep1] = useState(false);
   const [saveErr1, setSaveErr1] = useState<string | null>(null);
 
+  // Step-2 sources
   const [sources, setSources] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [confluence, setConfluence] = useState({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
@@ -1229,9 +1232,9 @@ const SelfServicePortal: React.FC = () => {
   }>({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
 
   const [savingStep2, setSavingStep2] = useState(false);
-  const [savedStep2, setSavedStep2] = useState(false);
   const [saveErr2, setSaveErr2] = useState<string | null>(null);
   const [uploadStatuses, setUploadStatuses] = useState<Record<string, 'idle'|'uploading'|'done'|'error'>>({});
+  const [step2Locked, setStep2Locked] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const onDrop: React.DragEventHandler<HTMLDivElement> = (e) => { e.preventDefault(); const f = Array.from(e.dataTransfer.files || []); if (f.length) setFileUpload(p => ({ ...p, files: [...p.files, ...f] })); };
@@ -1253,59 +1256,53 @@ const SelfServicePortal: React.FC = () => {
   // Continue button gating:
   const canContinue =
     activeStep === 1 ? savedStep1 :
-    activeStep === 2 ? savedStep2 && !savingStep2 :
+    activeStep === 2 ? !savingStep2 :
     activeStep === 3 ? processed && !processing :
     true;
 
-  // Disable Prev when: step 1 (no prev), processing running, OR past step1 after registration saved, OR on step2 after save
-  const prevDisabled =
-    activeStep === 1 ||
-    processing ||
-    (activeStep >= 2 && savedStep1) ||
-    (activeStep === 2 && (savedStep2 || savingStep2));
+  /* ---------------- Hydrate previous progress on load ---------------- */
 
-  function goNext() {
-    if (activeStep === TOTAL_STEPS) return;
-    if (activeStep === 1) {
-      setTouched({ teamName: true, department: true, domain: true, contactEmail: true, description: true });
-      if (!isStep1Valid || !savedStep1) return; // must submit successfully first
-    }
-    setActiveStep(s => Math.min(TOTAL_STEPS, s + 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  function goPrev() { if (prevDisabled) return; setActiveStep(s => Math.max(1, s - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-
-  /* ========= Progress persistence (localStorage, email-scoped) ======== */
-  const REG_KEY = 'coach.registration';
-  const PROG_KEY = (email: string) => `coach.progress.${email}`;
-
-  function persistProgress(step: number) {
-    if (!form.contactEmail) return;
-    try {
-      localStorage.setItem(PROG_KEY(form.contactEmail), JSON.stringify({ step, ts: Date.now() }));
-    } catch {}
-  }
-
+  // If we already saved an email, verify server state and set section/step
   useEffect(() => {
-    // On mount: if we have a saved registration, resume where left off.
+    const cached = localStorage.getItem('coach.registration');
+    if (!cached) return;
     try {
-      const regRaw = localStorage.getItem(REG_KEY);
-      if (!regRaw) return;
-      const reg = JSON.parse(regRaw || '{}') || {};
-      if (!reg?.contactEmail) return;
-
-      setSavedStep1(true);
-      // If you want to also repopulate the email field (nice when resuming)
-      setForm(p => ({ ...p, contactEmail: reg.contactEmail, teamName: reg.teamName || p.teamName }));
-
-      const progRaw = localStorage.getItem(PROG_KEY(reg.contactEmail));
-      const prog = progRaw ? JSON.parse(progRaw) : null;
-      if (prog?.step && typeof prog.step === 'number') {
-        setSection('onboard');
-        setActiveStep(Math.min(TOTAL_STEPS, Math.max(2, prog.step)));
-      }
-    } catch { /* ignore */ }
+      const { contactEmail } = JSON.parse(cached) || {};
+      if (!contactEmail) return;
+      fetch(`/api/registration-status?email=${encodeURIComponent(contactEmail)}`)
+        .then(r => r.ok ? r.json() : Promise.resolve({ registered: false }))
+        .then((d) => {
+          if (d?.registered) {
+            setSavedStep1(true);
+            setSection('dashboard');
+          }
+        })
+        .catch(() => {});
+    } catch { /* noop */ }
   }, []);
+
+  // preload full form & last step once we *know* savedStep1 (e.g. after reload)
+  useEffect(() => {
+    // restore the form fields we saved at registration time
+    const savedDetails = localStorage.getItem('coach.registration.details');
+    if (savedDetails) {
+      try { setForm(JSON.parse(savedDetails)); } catch {}
+    }
+    // if registered, jump to their last step when they enter Onboard again
+    if (savedStep1) {
+      const last = parseInt(localStorage.getItem('coach.onboarding.lastStep') || '2', 10);
+      if (last >= 2 && last <= TOTAL_STEPS) setActiveStep(last);
+    }
+  }, [savedStep1]);
+
+  // track last step whenever the Onboard wizard is open
+  useEffect(() => {
+    if (section === 'onboard') {
+      localStorage.setItem('coach.onboarding.lastStep', String(activeStep));
+    }
+  }, [section, activeStep]);
+
+  /* ----------------------- Actions / handlers ----------------------- */
 
   // Step-1: submit to S3 (enables Continue on success)
   async function submitTeamRegistration() {
@@ -1316,38 +1313,26 @@ const SelfServicePortal: React.FC = () => {
     }
     try {
       setSavingStep1(true);
-      const payload = {
-        kind: 'registration',
-        teamEmail: form.contactEmail,          // for backends that expect teamEmail
-        contactEmail: form.contactEmail,       // for our utils
-        teamName: form.teamName,
-        department: form.department,
-        domain: form.domain,
-        description: form.description,
-        savedAt: new Date().toISOString(),
-      };
+      const payload = { kind: 'registration', ...form, savedAt: new Date().toISOString() };
       const res = await putS3(payload);
       if (res?.ok) {
         setSavedStep1(true);
-        try {
-          localStorage.setItem(REG_KEY, JSON.stringify({ contactEmail: form.contactEmail, teamName: form.teamName }));
-          persistProgress(2);
-        } catch {}
+        // cache for future sessions
+        localStorage.setItem('coach.registration', JSON.stringify({ contactEmail: form.contactEmail, teamName: form.teamName }));
+        localStorage.setItem('coach.registration.details', JSON.stringify(form));
+        localStorage.setItem('coach.onboarding.lastStep', '2');
       } else {
-        const msg = await res.text().catch(()=>'');
-        throw new Error(msg || 'Registration failed');
+        throw new Error('Registration failed');
       }
     } catch (e: any) {
       setSaveErr1(e?.message || 'Failed to register team');
-      setSavedStep1(false);
     } finally {
       setSavingStep1(false);
     }
   }
 
-  // Step-2: common submit handler (called from Confluence panel OR File Upload panel)
-  async function submitKnowledgeSources() {
-    if (savedStep2 || savingStep2) return;
+  // Step-2: upload files (if any) + save sources JSON, then proceed
+  async function handleStep2SaveThenNext() {
     setSaveErr2(null);
     setSavingStep2(true);
 
@@ -1355,7 +1340,6 @@ const SelfServicePortal: React.FC = () => {
     const uploaded: Array<{ name: string; key: string }> = [];
 
     try {
-      // Upload files first (if any)
       if (files.length > 0) {
         const st: Record<string, 'idle'|'uploading'|'done'|'error'> = {};
         files.forEach((f) => (st[f.name] = 'idle'));
@@ -1373,36 +1357,56 @@ const SelfServicePortal: React.FC = () => {
         }
       }
 
-      // Save knowledge sources JSON
       const payload = {
         kind: 'sources',
-        teamEmail: form.contactEmail,
         contactEmail: form.contactEmail,
         selected: sources,
         confluence,
         fileUpload: {
           ...fileUpload,
-          filesMeta: fileUpload.files.map((f) => ({ name: f.name, size: f.size, type: (f as any).type || undefined })),
+          filesMeta: files.map((f) => ({ name: f.name, size: f.size, type: (f as any).type || undefined })),
           filesS3: uploaded,
         },
         savedAt: new Date().toISOString(),
       };
       const res = await putS3(payload);
-      if (!res?.ok) {
-        const msg = await res.text().catch(()=> '');
-        throw new Error(msg || 'Failed to save knowledge sources');
-      }
+      if (!res?.ok) throw new Error('Failed to save knowledge sources');
 
-      // Lock UI on Step 2, enable Continue, disable Prev, show success
-      setSavedStep2(true);
-      persistProgress(3);
-
+      setStep2Locked(true);
+      setActiveStep(3);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e: any) {
       setSaveErr2(e?.message || 'Failed to save knowledge sources');
-      setSavedStep2(false);
     } finally {
       setSavingStep2(false);
     }
+  }
+
+  // Continue / Previous navigation
+  function goNext() {
+    if (activeStep === TOTAL_STEPS) return;
+
+    // Step 1: if already registered, do not re-validate; just move on
+    if (activeStep === 1) {
+      if (savedStep1) {
+        setActiveStep(2);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      // not registered yet → show validation and wait for explicit submit
+      setTouched({ teamName: true, department: true, domain: true, contactEmail: true, description: true });
+      return;
+    }
+
+    setActiveStep(s => Math.min(TOTAL_STEPS, s + 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function goPrev() {
+    if (activeStep === 1) return;
+    // If step-2 is locked (user saved it), do not allow going back into step-1 edits
+    if (activeStep === 2 && (step2Locked || savedStep1)) return;
+    setActiveStep(s => Math.max(1, s - 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   /* -------------------------- Dashboard -------------------------- */
@@ -1801,11 +1805,27 @@ const SelfServicePortal: React.FC = () => {
   );
 
   /* -------------------------- Sub-nav ----------------------------- */
-  const SubnavLink: React.FC<{ id: Section; icon: React.ReactNode; label: string }> = ({ id, icon, label }) => (
-    <a href="#" className={`${styles.subnavLink} ${section === id ? styles.subnavLinkActive : ''}`} onClick={(e) => { e.preventDefault(); setSection(id); }}>
+  const SubnavLink: React.FC<{ id: Section; icon: React.ReactNode; label: string; onClick?: () => void }> =
+  ({ id, icon, label, onClick }) => (
+    <a
+      href="#"
+      className={`${styles.subnavLink} ${section === id ? styles.subnavLinkActive : ''}`}
+      onClick={(e) => { e.preventDefault(); if (onClick) onClick(); else setSection(id); }}
+    >
       {icon}<span>{label}</span>
     </a>
   );
+
+  // Clicking "Onboard team" should open the wizard at the right step
+  const openOnboard = () => {
+    setSection('onboard');
+    if (savedStep1) {
+      const last = parseInt(localStorage.getItem('coach.onboarding.lastStep') || '2', 10);
+      setActiveStep(Math.min(Math.max(last, 2), TOTAL_STEPS));
+    } else {
+      setActiveStep(1);
+    }
+  };
 
   /* --------------------------- Render ---------------------------- */
   const big = 26;
@@ -1817,9 +1837,6 @@ const SelfServicePortal: React.FC = () => {
     if (kind === 'Confluence') setConfluence({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
     if (kind === 'File Upload') setFileUpload({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
   }
-
-  // Step 2 panel disabled state (after successful submit)
-  const step2Locked = savedStep2 || savingStep2;
 
   return (
     <>
@@ -1846,7 +1863,7 @@ const SelfServicePortal: React.FC = () => {
       {/* Subnav */}
       <nav className={styles.subnav}>
         <div className={`${styles.container} ${styles.subnavInner}`}>
-          <SubnavLink id="onboard"   icon={<Icon.Plus />}      label="Onboard team" />
+          <SubnavLink id="onboard"   icon={<Icon.Plus />}      label="Onboard team" onClick={openOnboard} />
           <SubnavLink id="dashboard" icon={<Icon.ChartBars />} label="Dashboard" />
           <SubnavLink id="knowledge" icon={<Icon.Database />}  label="Knowledge sources" />
           <SubnavLink id="auto"      icon={<Icon.Calendar />}  label="Auto-refresh" />
@@ -1881,12 +1898,12 @@ const SelfServicePortal: React.FC = () => {
                       <div className={styles.formGrid}>
                         <div>
                           <label className={`${styles.label} ${styles.required}`} htmlFor="teamName">Team name</label>
-                          <input id="teamName" className={styles.input} placeholder="e.g., Cloud Support Team" value={form.teamName} onChange={e => setForm(p => ({ ...p, teamName: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, teamName: true }))} aria-invalid={!!(touched.teamName && errors.teamName)} aria-describedby="err-teamName" disabled={savedStep1} />
+                          <input id="teamName" className={styles.input} placeholder="e.g., Cloud Support Team" value={form.teamName} onChange={e => setForm(p => ({ ...p, teamName: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, teamName: true }))} aria-invalid={!!(touched.teamName && errors.teamName)} aria-describedby="err-teamName" disabled={savedStep1}/>
                           {touched.teamName && errors.teamName && <div id="err-teamName" className={styles.errorText}>{errors.teamName}</div>}
                         </div>
                         <div>
                           <label className={`${styles.label} ${styles.required}`} htmlFor="department">Department</label>
-                          <input id="department" className={styles.input} placeholder="e.g., ESAF" value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, department: true }))} aria-invalid={!!(touched.department && errors.department)} aria-describedby="err-dept" disabled={savedStep1} />
+                          <input id="department" className={styles.input} placeholder="e.g., ESAF" value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, department: true }))} aria-invalid={!!(touched.department && errors.department)} aria-describedby="err-dept" disabled={savedStep1}/>
                           {touched.department && errors.department && <div id="err-dept" className={styles.errorText}>{errors.department}</div>}
                         </div>
                         <div>
@@ -1898,20 +1915,22 @@ const SelfServicePortal: React.FC = () => {
                         </div>
                         <div>
                           <label className={`${styles.label} ${styles.required}`} htmlFor="email">Contact email</label>
-                          <input id="email" className={styles.input} placeholder="team-lead@company.com" value={form.contactEmail} onChange={e => setForm(p => ({ ...p, contactEmail: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, contactEmail: true }))} inputMode="email" autoComplete="email" aria-invalid={!!(touched.contactEmail && errors.contactEmail)} aria-describedby="err-email" disabled={savedStep1} />
+                          <input id="email" className={styles.input} placeholder="team-lead@company.com" value={form.contactEmail} onChange={e => setForm(p => ({ ...p, contactEmail: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, contactEmail: true }))} inputMode="email" autoComplete="email" aria-invalid={!!(touched.contactEmail && errors.contactEmail)} aria-describedby="err-email" disabled={savedStep1}/>
                           {touched.contactEmail && errors.contactEmail && <div id="err-email" className={styles.errorText}>{errors.contactEmail}</div>}
                         </div>
                         <div>
                           <label className={styles.label} htmlFor="desc">Team description</label>
-                          <textarea id="desc" className={styles.textarea} placeholder="Brief description of your team's responsibilities" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, description: true }))} disabled={savedStep1} />
+                          <textarea id="desc" className={styles.textarea} placeholder="Brief description of your team's responsibilities" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, description: true }))} disabled={savedStep1}/>
                         </div>
                       </div>
 
                       {/* Step-1 submit & messages */}
-                      <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <button type="button" className={styles.btn} onClick={submitTeamRegistration} disabled={savingStep1 || !isStep1Valid || savedStep1} style={{ background: 'var(--primary)', color: '#fff' }}>
-                          {savingStep1 ? 'Submitting…' : (savedStep1 ? 'Submitted ✓' : 'Submit')}
-                        </button>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                        {!savedStep1 && (
+                          <button type="button" className={styles.btn} onClick={submitTeamRegistration} disabled={savingStep1 || !isStep1Valid} style={{ background: 'var(--primary)', color: '#fff' }}>
+                            {savingStep1 ? 'Submitting…' : 'Submit'}
+                          </button>
+                        )}
                         {savedStep1 && (
                           <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: '8px 10px', borderRadius: 8 }}>
                             <Icon.Check size={14} /> Team details saved successfully. You can continue.
@@ -1930,16 +1949,16 @@ const SelfServicePortal: React.FC = () => {
                   {activeStep === 2 && (
                     <>
                       <div className={styles.sourcesGrid} role="group" aria-label="Add knowledge source">
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'Confluence' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('Confluence')} aria-pressed={selectedSource === 'Confluence'} disabled={step2Locked}>
+                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'Confluence' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('Confluence')} aria-pressed={selectedSource === 'Confluence'}>
                           <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Confluence size={big} /></span><span className={styles.sourceBtnLabel}>Confluence space</span></span>
                         </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'File Upload' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('File Upload')} aria-pressed={selectedSource === 'File Upload'} disabled={step2Locked}>
+                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'File Upload' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('File Upload')} aria-pressed={selectedSource === 'File Upload'}>
                           <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.File size={big} /></span><span className={styles.sourceBtnLabel}>File upload</span></span>
                         </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'SharePoint' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('SharePoint')} aria-pressed={selectedSource === 'SharePoint'} disabled>
+                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'SharePoint' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('SharePoint')} aria-pressed={selectedSource === 'SharePoint'}>
                           <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Globe size={big} /></span><span className={styles.sourceBtnLabel}>SharePoint</span></span>
                         </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'OneDrive' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('OneDrive')} aria-pressed={selectedSource === 'OneDrive'} disabled>
+                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'OneDrive' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('OneDrive')} aria-pressed={selectedSource === 'OneDrive'}>
                           <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Cloud size={big} /></span><span className={styles.sourceBtnLabel}>OneDrive</span></span>
                         </button>
                       </div>
@@ -1949,33 +1968,21 @@ const SelfServicePortal: React.FC = () => {
                           <header className={styles.sourcePanelHeader}>
                             <div className={styles.sourcePanelTitle} id="confluence-panel-title"><Icon.Confluence /><span>Confluence space</span></div>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                              {!step2Locked && <button type="button" className={styles.btn} onClick={() => setSelectedSource('File Upload')}>Go to File upload</button>}
-                              {!step2Locked && <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitKnowledgeSources}>Submit</button>}
-                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('Confluence')} aria-label="Remove Confluence source" disabled={step2Locked}>✕</button>
+                              <button type="button" className={styles.btn} onClick={() => setSelectedSource('File Upload')}>Go to File upload</button>
+                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('Confluence')} aria-label="Remove Confluence source">✕</button>
                             </div>
                           </header>
-                          <div className={styles.sourcePanelBody} aria-live="polite">
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-name">Source name</label><input id="cf-name" className={styles.input} placeholder="Confluence space name" value={confluence.name} onChange={e => setConfluence(p => ({ ...p, name: e.target.value }))} disabled={step2Locked} /></div>
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-url">URL / path</label><input id="cf-url" className={styles.input} placeholder="https://company.atlassian.net/wiki/spaces/SPACE" value={confluence.url} onChange={e => setConfluence(p => ({ ...p, url: e.target.value }))} inputMode="url" autoComplete="url" disabled={step2Locked} /></div>
-                            <div><label className={styles.label} htmlFor="cf-desc">Description</label><textarea id="cf-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={confluence.description} onChange={e => setConfluence(p => ({ ...p, description: e.target.value }))} disabled={step2Locked} /></div>
+                          <div className={styles.sourcePanelBody}>
+                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-name">Source name</label><input id="cf-name" className={styles.input} placeholder="Confluence space name" value={confluence.name} onChange={e => setConfluence(p => ({ ...p, name: e.target.value }))} /></div>
+                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-url">URL / path</label><input id="cf-url" className={styles.input} placeholder="https://company.atlassian.net/wiki/spaces/SPACE" value={confluence.url} onChange={e => setConfluence(p => ({ ...p, url: e.target.value }))} inputMode="url" autoComplete="url" /></div>
+                            <div><label className={styles.label} htmlFor="cf-desc">Description</label><textarea id="cf-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={confluence.description} onChange={e => setConfluence(p => ({ ...p, description: e.target.value }))} /></div>
                             <div className={styles.autorefresh}>
                               <div className={styles.autorefreshRow}>
-                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={confluence.autoRefresh} onChange={e => setConfluence(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} disabled={step2Locked} />Enable auto-sync</label>
-                                <select className={styles.select} aria-label="Frequency" value={confluence.frequency} onChange={e => setConfluence(p => ({ ...p, frequency: e.target.value }))} disabled={step2Locked}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
-                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={confluence.time} onChange={e => setConfluence(p => ({ ...p, time: e.target.value }))} disabled={step2Locked} />
+                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={confluence.autoRefresh} onChange={e => setConfluence(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} />Enable auto-sync</label>
+                                <select className={styles.select} aria-label="Frequency" value={confluence.frequency} onChange={e => setConfluence(p => ({ ...p, frequency: e.target.value }))}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
+                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={confluence.time} onChange={e => setConfluence(p => ({ ...p, time: e.target.value }))} />
                               </div>
                             </div>
-
-                            {savedStep2 && (
-                              <div role="status" style={{ background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: 10, borderRadius: 8, marginTop: 10 }}>
-                                <Icon.Check size={14} /> Knowledge sources saved successfully. You can continue to processing.
-                              </div>
-                            )}
-                            {saveErr2 && (
-                              <div role="alert" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: 10, borderRadius: 8, marginTop: 10 }}>
-                                {saveErr2}
-                              </div>
-                            )}
                           </div>
                         </section>
                       )}
@@ -1985,22 +1992,21 @@ const SelfServicePortal: React.FC = () => {
                           <header className={styles.sourcePanelHeader}>
                             <div className={styles.sourcePanelTitle} id="file-panel-title"><Icon.File /><span>File upload</span></div>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                              {!step2Locked && <button type="button" className={styles.btn} onClick={() => setSelectedSource('Confluence')}>Go to Confluence</button>}
-                              {!step2Locked && <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitKnowledgeSources}>Submit</button>}
-                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('File Upload')} aria-label="Remove File Upload source" disabled={step2Locked}>✕</button>
+                              <button type="button" className={styles.btn} onClick={() => setSelectedSource('Confluence')}>Go to Confluence</button>
+                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('File Upload')} aria-label="Remove File Upload source">✕</button>
                             </div>
                           </header>
-                          <div className={styles.sourcePanelBody} aria-live="polite">
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="fu-name">Source name</label><input id="fu-name" className={styles.input} placeholder="Source name" value={fileUpload.name} onChange={e => setFileUpload(p => ({ ...p, name: e.target.value }))} disabled={step2Locked} /></div>
+                          <div className={styles.sourcePanelBody}>
+                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="fu-name">Source name</label><input id="fu-name" className={styles.input} placeholder="Source name" value={fileUpload.name} onChange={e => setFileUpload(p => ({ ...p, name: e.target.value }))} /></div>
                             <div>
                               <label className={styles.label} htmlFor="fu-files">Upload files</label>
-                              <div id="fu-files" style={{ ...dropzoneStyle, opacity: step2Locked ? 0.6 : 1, cursor: step2Locked ? 'not-allowed' : 'pointer' }} onDragOver={onDragOver} onDrop={step2Locked ? undefined : onDrop} onClick={() => !step2Locked && fileInputRef.current?.click()} role="button" tabIndex={0} aria-label="Click to upload or drag and drop files">
+                              <div id="fu-files" style={dropzoneStyle} onDragOver={onDragOver} onDrop={onDrop} onClick={() => fileInputRef.current?.click()} role="button" tabIndex={0} aria-label="Click to upload or drag and drop files">
                                 <div style={{ display: 'grid', placeItems: 'center', gap: 8 }}>
                                   <Icon.Upload size={24} />
                                   <div>Click to upload or drag and drop</div>
                                   <div style={{ fontSize: 12 }}>PDF, DOC, TXT, MD, JSON, XML files supported</div>
                                 </div>
-                                <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.json,.xml" style={{ display: 'none' }} onChange={onFilePick} disabled={step2Locked} />
+                                <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.json,.xml" style={{ display: 'none' }} onChange={onFilePick} />
                               </div>
                               {fileUpload.files.length > 0 && (
                                 <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
@@ -2018,26 +2024,21 @@ const SelfServicePortal: React.FC = () => {
                                           {uploadStatuses[f.name] === 'error' && 'failed'}
                                         </span>
                                       )}
-                                      <button type="button" aria-label={`Remove ${f.name}`} onClick={() => removeFile(idx)} className={styles.sourcePanelClose} style={{ padding: '2px 6px' }} disabled={step2Locked}>✕</button>
+                                      <button type="button" aria-label={`Remove ${f.name}`} onClick={() => removeFile(idx)} className={styles.sourcePanelClose} style={{ padding: '2px 6px' }}>✕</button>
                                     </li>
                                   ))}
                                 </ul>
                               )}
                             </div>
-                            <div><label className={styles.label} htmlFor="fu-desc">Description</label><textarea id="fu-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={fileUpload.description} onChange={e => setFileUpload(p => ({ ...p, description: e.target.value }))} disabled={step2Locked} /></div>
+                            <div><label className={styles.label} htmlFor="fu-desc">Description</label><textarea id="fu-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={fileUpload.description} onChange={e => setFileUpload(p => ({ ...p, description: e.target.value }))} /></div>
                             <div className={styles.autorefresh}>
                               <div className={styles.autorefreshRow}>
-                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={fileUpload.autoRefresh} onChange={e => setFileUpload(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} disabled={step2Locked} />Enable auto-sync</label>
-                                <select className={styles.select} aria-label="Frequency" value={fileUpload.frequency} onChange={e => setFileUpload(p => ({ ...p, frequency: e.target.value as any }))} disabled={step2Locked}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
-                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={fileUpload.time} onChange={e => setFileUpload(p => ({ ...p, time: e.target.value }))} disabled={step2Locked} />
+                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={fileUpload.autoRefresh} onChange={e => setFileUpload(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} />Enable auto-sync</label>
+                                <select className={styles.select} aria-label="Frequency" value={fileUpload.frequency} onChange={e => setFileUpload(p => ({ ...p, frequency: e.target.value as any }))}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
+                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={fileUpload.time} onChange={e => setFileUpload(p => ({ ...p, time: e.target.value }))} />
                               </div>
                             </div>
 
-                            {savedStep2 && (
-                              <div role="status" style={{ background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: 10, borderRadius: 8, marginTop: 10 }}>
-                                <Icon.Check size={14} /> Knowledge sources saved successfully. You can continue to processing.
-                              </div>
-                            )}
                             {saveErr2 && (
                               <div role="alert" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: 10, borderRadius: 8, marginTop: 10 }}>
                                 {saveErr2}
@@ -2063,7 +2064,7 @@ const SelfServicePortal: React.FC = () => {
                         <strong style={{ fontWeight: 600 }}>Sources to process: </strong>{sources.length > 0 ? sources.join(', ') : 'None selected'}
                       </div>
                       <div style={{ display: 'grid', placeItems: 'center', paddingTop: 4 }}>
-                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { if (processing) return; setProcessing(true); setProcessed(false); setTimeout(() => { setProcessing(false); setProcessed(true); persistProgress(4); }, 1600); }} disabled={processing} aria-busy={processing}>
+                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { if (processing) return; setProcessing(true); setProcessed(false); setTimeout(() => { setProcessing(false); setProcessed(true); }, 1600); }} disabled={processing} aria-busy={processing}>
                           {processing ? 'Running…' : 'Start processing'}
                         </button>
                       </div>
@@ -2103,11 +2104,19 @@ const SelfServicePortal: React.FC = () => {
                   )}
 
                   <div className={styles.formFooter}>
-                    <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={goPrev} disabled={prevDisabled}>Previous</button>
+                    <button
+                      type="button"
+                      className={`${styles.btn} ${styles.btnGhost}`}
+                      onClick={goPrev}
+                      disabled={activeStep === 1 || processing || (activeStep === 2 && (step2Locked || savedStep1))}
+                      title={(activeStep === 2 && (step2Locked || savedStep1)) ? 'Registration saved / Step 2 locked — cannot go back' : undefined}
+                    >
+                      Previous
+                    </button>
                     <button
                       type="button"
                       className={`${styles.btn} ${styles.btnPrimary}`}
-                      onClick={() => { activeStep === 2 ? (savedStep2 ? goNext() : submitKnowledgeSources()) : goNext(); }}
+                      onClick={() => { activeStep === 2 ? handleStep2SaveThenNext() : goNext(); }}
                       disabled={!canContinue}
                     >
                       {activeStep === 3 && processing ? 'Processing…' : activeStep === TOTAL_STEPS ? 'Finish' : 'Continue'}
