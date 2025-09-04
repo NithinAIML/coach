@@ -2,13 +2,66 @@
 # -*- coding: utf-8 -*-
 
 """
-pipeline.py — One-file pipeline
-- Inline secrets/config (Azure AD + Azure OpenAI OR plain OpenAI) + Pinecone
-- Optional Coveo discovery; Confluence fetching with ConfluenceLoader
-- File ingestion (pdf/docx/doc/txt/md/html/json/csv/xlsx) with fallbacks
-- Adaptive chunking, embeddings, Pinecone upsert
-- Detailed per-source + total stats
-- CLI: python pipeline.py config.json
+pipeline.py — single-file pipeline with runtime secrets from AWS Secrets Manager
+
+What this does
+--------------
+1) Loads secrets at runtime from AWS Secrets Manager:
+   - Pinecone: expects JSON with key "apiKey"
+   - Azure OpenAI AAD app: expects JSON with fields like
+       {
+         "AzureServicePrincipalId": "...",     # client_id
+         "Password": "...",                    # client_secret
+         "TenantId": "xxxxxxxx-xxxx-...",      # or "TenantName": "contoso.onmicrosoft.com"
+         "Endpoint": "https://<resource>.openai.azure.com",
+         "ApiVersion": "2024-02-01",
+         "EmbeddingDeployment": "text-embedding-3-small",
+         "EmbeddingDimension": 1536
+       }
+   (Strips stray quotes if secrets are double-quoted inside the SecretString.)
+
+2) Builds embeddings via Azure OpenAI (AAD token with MSAL), chunked text.
+3) Ingests:
+   - Confluence root (space) or single page via ConfluenceLoader
+   - Optional Coveo discovery by labels (adds discovered Confluence pages)
+   - Files: pdf (PyMuPDF→PyPDF2→pdfminer), docx, doc (textract optional), txt/md, html, json, csv, xlsx
+4) Adaptive chunking (RecursiveCharacterTextSplitter), per-source tuning
+5) Stores embeddings to Pinecone index (default: test-{team_name})
+6) Prints a report: per-source words & chunk counts + totals (and discovered URLs if any)
+
+Usage
+-----
+python pipeline.py config.json
+
+Example config.json:
+{
+  "team_name": "IAM",
+  "index_name": "test-iam",
+  "confluence": {
+    "username": "user@company.com",
+    "api_token": "CONFLUENCE_API_TOKEN",
+    "sources": [
+      {"type":"root","url":"https://your.atlassian.net/wiki/spaces/IAM/overview"},
+      {"type":"page","url":"https://your.atlassian.net/wiki/spaces/IAM/pages/123456789/Page"}
+    ],
+    "include_attachments": true,
+    "max_space_pages": 300
+  },
+  "coveo": {
+    "enabled": false,
+    "organization_id": "your-org-id",
+    "auth_token": "COVEO_PLATFORM_TOKEN",
+    "user_email": "user@company.com",
+    "tags": ["kb-label"]
+  },
+  "files": ["./docs/a.pdf","./docs/b.docx","./docs/sheet.xlsx"]
+}
+
+Install (typical)
+-----------------
+pip install msal openai pinecone-client langchain-community pandas beautifulsoup4 PyMuPDF pypdf2 pdfminer.six python-docx
+# optional: textract (for .doc) if system deps are present
+
 """
 
 import os
@@ -17,163 +70,184 @@ import io
 import sys
 import json
 import time
-import math
-import hashlib
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
-# ===================== Inline secrets (edit these) =====================
-CONFIG = {
-    # Embeddings provider:
-    #   True  -> Azure OpenAI with AAD via MSAL (tenant/client/secret)
-    #   False -> Plain OpenAI API key
-    "use_azure_openai": True,
-
-    # Azure AD + Azure OpenAI settings
-    "azure_openai": {
-        "tenant_id":     "YOUR_TENANT_ID_OR_NAME",      # GUID or "contoso.onmicrosoft.com"
-        "client_id":     "YOUR_APP_REG_CLIENT_ID",
-        "client_secret": "YOUR_APP_REG_CLIENT_SECRET",
-
-        # Azure OpenAI resource
-        "endpoint":      "https://YOUR-RESOURCE.openai.azure.com",
-        "api_version":   "2024-02-01",
-
-        # Embedding deployment name (1536-dim recommended)
+# ======================== Inline config (edit ARNs) ========================
+CONFIG: Dict[str, Any] = {
+    "aws_region": "us-east-1",
+    "secrets": {
+        # <<< REPLACE THESE WITH YOUR SECRET ARNs >>>
+        "pinecone_secret_arn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:pinecone/apiKey-XXXXX",
+        "azure_openai_secret_arn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:azure-openai/app-XXXXX",
+    },
+    # Optional defaults if your secret doesn’t include these (will be overridden by secret values if present):
+    "azure_defaults": {
+        "api_version": "2024-02-01",
         "embedding_deployment": "text-embedding-3-small",
         "embedding_dimension": 1536,
-
-        # MSAL scope for Azure Cognitive Services
-        "scopes": ["https://cognitiveservices.azure.com/.default"],
     },
-
-    # Plain OpenAI settings (if not using Azure)
-    "openai": {
-        "api_key": "",  # "sk-..."
-        "embedding_model": "text-embedding-3-small",
-        "embedding_dimension": 1536,
-    },
-
-    # Pinecone
-    "pinecone": {
-        "api_key": "pc-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-        "serverless_region": "us-east-1",
-    },
+    # Pinecone serverless region (matches your project)
+    "pinecone_region": "us-east-1",
 }
-# ======================================================================
+# ==========================================================================
 
 
-# =============== Bootstrap providers from CONFIG/env ==================
-def _apply_inline_config_to_env() -> None:
-    use_az = CONFIG.get("use_azure_openai", False)
+# ========================== Secrets via AWS SM =============================
+def _strip_quotes(s: Optional[str]) -> Optional[str]:
+    if s is None:
+        return None
+    return s.replace('"', '').replace("'", '').strip()
 
-    # Pinecone
-    if not os.getenv("PINECONE_API_KEY") and CONFIG["pinecone"].get("api_key"):
-        os.environ["PINECONE_API_KEY"] = CONFIG["pinecone"]["api_key"]
-    if not os.getenv("PINECONE_SERVERLESS_REGION") and CONFIG["pinecone"].get("serverless_region"):
-        os.environ["PINECONE_SERVERLESS_REGION"] = CONFIG["pinecone"]["serverless_region"]
 
-    if use_az:
-        az = CONFIG["azure_openai"]
-        if not os.getenv("AZURE_OPENAI_ENDPOINT") and az.get("endpoint"):
-            os.environ["AZURE_OPENAI_ENDPOINT"] = az["endpoint"]
-        if not os.getenv("AZURE_OPENAI_API_VERSION") and az.get("api_version"):
-            os.environ["AZURE_OPENAI_API_VERSION"] = az["api_version"]
-        if not os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT") and az.get("embedding_deployment"):
-            os.environ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT"] = az["embedding_deployment"]
-        if not os.getenv("AZURE_OPENAI_EMBEDDING_DIMENSION") and az.get("embedding_dimension"):
-            os.environ["AZURE_OPENAI_EMBEDDING_DIMENSION"] = str(az["embedding_dimension"])
+def _load_secret_json(arn: str, region: str) -> Dict[str, Any]:
+    import boto3
+    sm = boto3.client(service_name="secretsmanager", region_name=region)
+    resp = sm.get_secret_value(SecretId=arn)
+    raw = resp.get("SecretString") or ""
+    try:
+        data = json.loads(raw)
+    except Exception:
+        # sometimes the secret is stored as a quoted string of JSON inside JSON
+        raw2 = _strip_quotes(raw) or ""
+        try:
+            data = json.loads(raw2)
+        except Exception:
+            data = {}
+    return data
+
+
+def load_runtime_secrets() -> Dict[str, Any]:
+    """
+    Returns a dict:
+    {
+      "pinecone_api_key": "...",
+      "azure": {
+        "tenant": "...", "client_id": "...", "client_secret": "...",
+        "endpoint": "https://...azure.com", "api_version": "2024-02-01",
+        "embedding_deployment": "text-embedding-3-small",
+        "embedding_dimension": 1536
+      }
+    }
+    """
+    region = CONFIG.get("aws_region", "us-east-1")
+    out = {"pinecone_api_key": None, "azure": {}}
+
+    # Pinecone secret
+    pc_arn = CONFIG["secrets"].get("pinecone_secret_arn")
+    if pc_arn:
+        pc_json = _load_secret_json(pc_arn, region)
+        api_key = pc_json.get("apiKey")
+        if api_key is None:
+            # also try "apikey"
+            api_key = pc_json.get("apikey")
+        out["pinecone_api_key"] = _strip_quotes(api_key)
     else:
-        oa = CONFIG["openai"]
-        if not os.getenv("OPENAI_API_KEY") and oa.get("api_key"):
-            os.environ["OPENAI_API_KEY"] = oa["api_key"]
-        if not os.getenv("OPENAI_EMBEDDING_MODEL") and oa.get("embedding_model"):
-            os.environ["OPENAI_EMBEDDING_MODEL"] = oa["embedding_model"]
-        if not os.getenv("OPENAI_EMBEDDING_DIMENSION") and oa.get("embedding_dimension"):
-            os.environ["OPENAI_EMBEDDING_DIMENSION"] = str(oa["embedding_dimension"])
+        out["pinecone_api_key"] = None
+
+    # Azure OpenAI / AAD app secret
+    az_arn = CONFIG["secrets"].get("azure_openai_secret_arn")
+    az: Dict[str, Any] = {}
+    if az_arn:
+        az_json = _load_secret_json(az_arn, region)
+
+        # Client creds
+        client_id = az_json.get("AzureServicePrincipalId") or az_json.get("ClientId")
+        client_secret = az_json.get("Password") or az_json.get("ClientSecret")
+        tenant = az_json.get("TenantId") or az_json.get("TenantName")  # allow either
+
+        # Service config
+        endpoint = az_json.get("Endpoint") or az_json.get("endpoint")  # https://<resource>.openai.azure.com
+        api_version = az_json.get("ApiVersion") or CONFIG["azure_defaults"]["api_version"]
+        emb_dep = az_json.get("EmbeddingDeployment") or CONFIG["azure_defaults"]["embedding_deployment"]
+        emb_dim = az_json.get("EmbeddingDimension") or CONFIG["azure_defaults"]["embedding_dimension"]
+
+        az = {
+            "tenant": _strip_quotes(tenant),
+            "client_id": _strip_quotes(client_id),
+            "client_secret": _strip_quotes(client_secret),
+            "endpoint": _strip_quotes(endpoint),
+            "api_version": _strip_quotes(str(api_version)),
+            "embedding_deployment": _strip_quotes(emb_dep),
+            "embedding_dimension": int(emb_dim) if str(emb_dim).isdigit() else CONFIG["azure_defaults"]["embedding_dimension"],
+        }
+    out["azure"] = az
+    return out
+# ==========================================================================
 
 
-_apply_inline_config_to_env()
-# ======================================================================
-
-
-# ============================ Embeddings ===============================
-def _get_azure_aad_token() -> str:
-    """Acquire an AAD token for Azure Cognitive Services using MSAL confidential client."""
+# ============================= Embeddings ================================
+def _get_az_aad_token(tenant: str, client_id: str, client_secret: str) -> str:
+    """Acquire AAD token (client credentials) for Azure Cognitive Services."""
     from msal import ConfidentialClientApplication
-    az = CONFIG["azure_openai"]
-    tenant = az["tenant_id"]
     authority = f"https://login.microsoftonline.com/{tenant}"
     app = ConfidentialClientApplication(
-        client_id=az["client_id"],
-        client_credential=az["client_secret"],
+        client_id=client_id,
+        client_credential=client_secret,
         authority=authority,
     )
-    scopes = az.get("scopes") or ["https://cognitiveservices.azure.com/.default"]
-    result = app.acquire_token_for_client(scopes=scopes)
-    if "access_token" not in result:
-        raise RuntimeError(f"MSAL acquire_token_for_client failed: {result}")
-    return result["access_token"]
+    scopes = ["https://cognitiveservices.azure.com/.default"]
+    res = app.acquire_token_for_client(scopes=scopes)
+    if "access_token" not in res:
+        raise RuntimeError(f"MSAL token fetch failed: {res}")
+    return res["access_token"]
 
 
-def _get_embedding_client():
-    """Return (flavor, client) handling both new and legacy OpenAI SDKs."""
-    use_az = CONFIG.get("use_azure_openai", False)
+def _embedding_client_from_secrets(az: Dict[str, Any]):
+    """
+    Returns a tuple (flavor, client, model), supporting both new and legacy OpenAI SDKs.
+    Uses AAD token as API key for AzureOpenAI (new SDK), or sets legacy globals if needed.
+    """
+    endpoint = az["endpoint"]
+    api_version = az["api_version"]
+    model = az["embedding_deployment"]
+
+    # Acquire token
+    token = _get_az_aad_token(az["tenant"], az["client_id"], az["client_secret"])
+
+    # Prefer new SDK if available
     try:
-        if use_az:
-            from openai import AzureOpenAI
-            client = AzureOpenAI(
-                azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-                api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-                api_key=_get_azure_aad_token(),  # Bearer token via api_key in new SDK
-            )
-            return ("new-azure", client)
-        else:
-            from openai import OpenAI
-            client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-            return ("new-openai", client)
+        from openai import AzureOpenAI
+        client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            api_key=token,  # bearer in new SDK
+        )
+        return ("new-azure", client, model)
     except Exception:
-        import openai as _openai
-        if use_az:
-            _openai.api_type = "azure_ad"
-            _openai.api_base = os.environ["AZURE_OPENAI_ENDPOINT"]
-            _openai.api_version = os.environ["AZURE_OPENAI_API_VERSION"]
-            _openai.api_key = _get_azure_aad_token()
-            return ("legacy-azure", _openai)
-    # legacy openai
+        pass
+
+    # Fallback: legacy openai
     import openai as _openai
-    _openai.api_key = os.environ["OPENAI_API_KEY"]
-    return ("legacy-openai", _openai)
+    _openai.api_type = "azure_ad"
+    _openai.api_base = endpoint
+    _openai.api_version = api_version
+    _openai.api_key = token
+    return ("legacy-azure", _openai, model)
 
 
-def embed_texts(texts: List[str]) -> List[List[float]]:
-    """Create embeddings with retries."""
+def embed_texts(texts: List[str], az_cfg: Dict[str, Any]) -> List[List[float]]:
     if not texts:
         return []
-    flavor, client = _get_embedding_client()
-    model = os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT") if CONFIG.get("use_azure_openai", False) \
-        else os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    flavor, client, model = _embedding_client_from_secrets(az_cfg)
     retries, backoff = 4, 2.0
     for attempt in range(1, retries + 1):
         try:
-            if flavor in ("new-azure", "new-openai"):
+            if flavor == "new-azure":
                 resp = client.embeddings.create(model=model, input=texts)
                 return [d.embedding for d in resp.data]
-            elif flavor == "legacy-azure":
+            else:
                 resp = client.Embedding.create(engine=model, input=texts)
-                return [d["embedding"] for d in resp["data"]]
-            else:  # legacy-openai
-                resp = client.Embedding.create(model=model, input=texts)
                 return [d["embedding"] for d in resp["data"]]
         except Exception as e:
             if attempt == retries:
                 raise
             time.sleep(backoff ** attempt)
     return []
-# ======================================================================
+# ==========================================================================
 
 
-# ============================ Pinecone ================================
+# ============================== Pinecone ================================
 from pinecone import Pinecone, ServerlessSpec
 try:
     from pinecone.exceptions import PineconeApiException
@@ -181,16 +255,15 @@ except Exception:
     try:
         from pinecone.exceptions.exceptions import PineconeApiException
     except Exception:
-        class PineconeApiException(Exception):
+        class PineconeApiException(Exception):  # type: ignore
             pass
 
 
-def _pc_client() -> Pinecone:
-    return Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+def pc_client(pinecone_api_key: str) -> Pinecone:
+    return Pinecone(api_key=pinecone_api_key)
 
 
-def ensure_index(index_name: str, dimension: int = 1536) -> None:
-    pc = _pc_client()
+def ensure_index(pc: Pinecone, index_name: str, dimension: int, region: str) -> None:
     try:
         pc.describe_index(index_name)
         return
@@ -204,7 +277,7 @@ def ensure_index(index_name: str, dimension: int = 1536) -> None:
             name=index_name,
             dimension=dimension,
             metric="cosine",
-            spec=ServerlessSpec(cloud="aws", region=os.environ.get("PINECONE_SERVERLESS_REGION", "us-east-1")),
+            spec=ServerlessSpec(cloud="aws", region=region),
             deletion_protection="disabled",
         )
     except PineconeApiException as e:
@@ -213,27 +286,29 @@ def ensure_index(index_name: str, dimension: int = 1536) -> None:
     pc.describe_index(index_name)
 
 
-def _private_host(pc: Pinecone, index_name: str) -> str:
+def private_host(pc: Pinecone, index_name: str) -> str:
     desc = pc.describe_index(index_name)
     host = desc["host"]
     parts = host.split(".")
     return f"{'.'.join(parts[:2])}.private.{'.'.join(parts[2:])}"
 
 
-def upsert_embeddings(index_name: str, vectors: List[Tuple[str, List[float], Dict[str, Any]]]) -> None:
-    pc = _pc_client()
-    dim = int(os.environ.get("AZURE_OPENAI_EMBEDDING_DIMENSION") or os.environ.get("OPENAI_EMBEDDING_DIMENSION") or "1536")
-    ensure_index(index_name, dimension=dim)
-    host = _private_host(pc, index_name)
+def upsert_to_pinecone(pinecone_api_key: str,
+                       region: str,
+                       index_name: str,
+                       dimension: int,
+                       vectors: List[Tuple[str, List[float], Dict[str, Any]]]) -> None:
+    pc = pc_client(pinecone_api_key)
+    ensure_index(pc, index_name, dimension, region)
+    host = private_host(pc, index_name)
     index = pc.Index(host=host)
     B = 100
     for i in range(0, len(vectors), B):
         index.upsert(vectors[i:i + B])
-# ======================================================================
+# ==========================================================================
 
 
-# ======================= Confluence + Coveo ===========================
-# Helpers from your teammate’s utilities
+# =========================== Confluence / Coveo ==========================
 def get_base_url(url: str) -> str:
     m = re.match(r"^(.*?)(?=\/spaces|\/wiki)", url)
     if m:
@@ -257,7 +332,7 @@ def remove_repeated_newlines(s: str) -> str:
     return re.sub(r"\n(?:[\t ]*\n)+", "\n\n", s)
 
 
-# Coveo
+# Coveo discovery
 import requests
 class CoveoSearch:
     def __init__(self, organization_id: str, auth_token: str):
@@ -286,23 +361,21 @@ class CoveoSearch:
         r.raise_for_status()
         data = r.json() or {}
         return [it.get("clickUri") for it in data.get("results", []) if it.get("clickUri")]
-# ======================================================================
+# ==========================================================================
 
 
-# =========================== Ingestion ================================
+# ================================ Ingest ================================
 def ingest_confluence(sources: List[Dict[str, Any]],
                       username: str,
                       api_token: str,
                       include_attachments: bool = True,
                       max_space_pages: int = 1000) -> List[Dict[str, Any]]:
     """
-    sources: list of dicts like:
-      - {"type":"root","url":"https://<site>/spaces/SPACEKEY/..."} -> fetch whole space (up to limit)
-      - {"type":"page","url":"https://<site>/spaces/SPACE/pages/<id>"} -> fetch that page
-    returns: [{"id": "...", "text":"...", "meta": {...}}]
+    sources: items like:
+      {"type":"root","url":"https://<site>/spaces/SPACE/overview"} -> whole space (limit)
+      {"type":"page","url":"https://<site>/spaces/SPACE/pages/<id>/..."} -> that page
     """
     from langchain_community.document_loaders import ConfluenceLoader
-
     docs: List[Dict[str, Any]] = []
     for src in sources:
         url = src.get("url") or ""
@@ -322,8 +395,7 @@ def ingest_confluence(sources: List[Dict[str, Any]],
                 )
                 items = loader.load()
                 for d in items:
-                    text = d.page_content or ""
-                    text = remove_repeated_newlines(text)
+                    text = remove_repeated_newlines(d.page_content or "")
                     meta = dict(d.metadata or {})
                     pid = meta.get("id") or meta.get("page_id") or f"{space}:{hash(text)}"
                     docs.append({
@@ -375,11 +447,10 @@ def discover_with_coveo(conf: Dict[str, Any]) -> List[str]:
         return []
 
 
-# -------- file readers (robust fallbacks) ----------
+# ----- File readers -----
 def read_pdf(path: str) -> List[Tuple[str, str, Dict[str, Any]]]:
-    """Return list of (id, text, meta) page-wise."""
     pages: List[Tuple[str, str, Dict[str, Any]]] = []
-    # 1) PyMuPDF
+    # PyMuPDF first
     try:
         import fitz  # PyMuPDF
         with fitz.open(path) as doc:
@@ -389,7 +460,7 @@ def read_pdf(path: str) -> List[Tuple[str, str, Dict[str, Any]]]:
         return pages
     except Exception:
         pass
-    # 2) PyPDF2
+    # PyPDF2 next
     try:
         import PyPDF2
         with open(path, "rb") as f:
@@ -400,7 +471,7 @@ def read_pdf(path: str) -> List[Tuple[str, str, Dict[str, Any]]]:
         return pages
     except Exception:
         pass
-    # 3) pdfminer (last resort, single blob)
+    # pdfminer fallback
     try:
         from pdfminer.high_level import extract_text
         text = extract_text(path)
@@ -422,9 +493,8 @@ def read_docx(path: str) -> str:
 
 
 def read_doc(path: str) -> str:
-    # Try textract (if installed)
     try:
-        import textract  # type: ignore
+        import textract  # optional
         content = textract.process(path)
         return content.decode("utf-8", errors="ignore")
     except Exception as e:
@@ -457,7 +527,6 @@ def read_json(path: str) -> str:
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
-        # flatten values
         def _flatten(x):
             if isinstance(x, dict):
                 return " ".join(_flatten(v) for v in x.values())
@@ -505,10 +574,10 @@ def ingest_files(paths: List[str]) -> List[Dict[str, Any]]:
             pages = read_pdf(p)
             for pid, text, meta in pages:
                 docs.append({"id": pid, "text": text or "", "meta": meta})
-        elif ext in (".docx",):
+        elif ext == ".docx":
             text = read_docx(p)
             docs.append({"id": f"file:{p}", "text": text, "meta": {"source_type": "file", "filename": os.path.basename(p)}})
-        elif ext in (".doc",):
+        elif ext == ".doc":
             text = read_doc(p)
             docs.append({"id": f"file:{p}", "text": text, "meta": {"source_type": "file", "filename": os.path.basename(p)}})
         elif ext in (".txt", ".md"):
@@ -529,16 +598,15 @@ def ingest_files(paths: List[str]) -> List[Dict[str, Any]]:
         else:
             print(f"[WARN] unsupported file type: {p}")
     return docs
-# ======================================================================
+# ==========================================================================
 
 
-# ======================= Chunking / Utilities =========================
+# =========================== Chunking / utils ============================
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 def _adaptive_splitter(meta: Dict[str, Any]) -> RecursiveCharacterTextSplitter:
     st = meta.get("source_type")
     if st == "confluence":
-        # prose/KB pages
         return RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200)
     if st == "file":
         fname = (meta.get("filename") or "").lower()
@@ -551,7 +619,6 @@ def _adaptive_splitter(meta: Dict[str, Any]) -> RecursiveCharacterTextSplitter:
         if fname.endswith((".md", ".txt")):
             return RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200)
         return RecursiveCharacterTextSplitter(chunk_size=1100, chunk_overlap=180)
-    # default
     return RecursiveCharacterTextSplitter(chunk_size=1100, chunk_overlap=180)
 
 
@@ -571,12 +638,11 @@ def chunk_documents(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             meta["char_len"] = len(part)
             chunks.append({"id": cid, "text": part, "meta": meta})
     return chunks
-# ======================================================================
+# ==========================================================================
 
 
-# ============================== Runner ===============================
+# =============================== Runner ==================================
 def build_report(docs: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-    # words per doc and chunk counts
     per_source: Dict[str, Dict[str, Any]] = {}
     for d in docs:
         sid = d["id"]
@@ -594,7 +660,6 @@ def build_report(docs: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> Di
         sid = c["meta"].get("source_id")
         if sid in per_source:
             per_source[sid]["chunks"] += 1
-
     totals = {
         "sources": len(docs),
         "total_words": sum(v["words"] for v in per_source.values()),
@@ -603,20 +668,27 @@ def build_report(docs: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> Di
     return {"per_source": per_source, "totals": totals}
 
 
-def store_text_corpus(index_name: str, corpus: List[Dict[str, Any]]) -> Dict[str, Any]:
+def store_text_corpus(index_name: str,
+                      corpus: List[Dict[str, Any]],
+                      az_cfg: Dict[str, Any],
+                      pinecone_api_key: str,
+                      pinecone_region: str) -> Dict[str, Any]:
     # 1) chunk
     chunks = chunk_documents(corpus)
 
-    # 2) embed + upsert
+    # 2) embed + collect vectors
     vectors: List[Tuple[str, List[float], Dict[str, Any]]] = []
     B = 64
     for i in range(0, len(chunks), B):
         batch = chunks[i:i + B]
         texts = [c["text"] for c in batch]
-        embs = embed_texts(texts)
+        embs = embed_texts(texts, az_cfg)
         for c, e in zip(batch, embs):
             vectors.append((c["id"], e, c["meta"]))
-    upsert_embeddings(index_name, vectors)
+
+    # 3) upsert
+    dim = az_cfg.get("embedding_dimension", 1536)
+    upsert_to_pinecone(pinecone_api_key, pinecone_region, index_name, dim, vectors)
 
     report = build_report(corpus, chunks)
     report.update({"index": index_name, "upserted": len(vectors)})
@@ -625,42 +697,31 @@ def store_text_corpus(index_name: str, corpus: List[Dict[str, Any]]) -> Dict[str
 
 def run_pipeline(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """
-    cfg example:
-    {
-      "team_name": "IAM",
-      "index_name": "test-iam",            # optional; default = f"test-{team}"
-      "confluence": {
-        "username": "...",
-        "api_token": "...",
-        "sources": [
-          {"type":"root","url":"https://xxx.atlassian.net/wiki/spaces/IAM/overview"},
-          {"type":"page","url":"https://xxx.atlassian.net/wiki/spaces/IAM/pages/123456789"}
-        ],
-        "include_attachments": true,
-        "max_space_pages": 500
-      },
-      "coveo": {
-        "enabled": true,
-        "organization_id": "...",
-        "auth_token": "...",
-        "user_email": "user@company.com",
-        "tags": ["mylabel"]
-      },
-      "files": ["./docs/A.pdf","./docs/B.docx","./docs/table.xlsx"]
-    }
+    cfg example in module docstring.
     """
+    # 0) Load secrets at runtime
+    secrets = load_runtime_secrets()
+    pinecone_api_key = secrets.get("pinecone_api_key")
+    az_cfg = secrets.get("azure", {})
+
+    if not pinecone_api_key:
+        raise RuntimeError("Pinecone API key not found in Secrets Manager (apiKey).")
+    for k in ("tenant", "client_id", "client_secret", "endpoint", "api_version", "embedding_deployment"):
+        if not az_cfg.get(k):
+            raise RuntimeError(f"Azure OpenAI secret missing required field: {k}")
+
+    # 1) Prep index name
     team = (cfg.get("team_name") or "team").strip().lower().replace(" ", "-")
     index_name = (cfg.get("index_name") or f"test-{team}").lower()
 
     all_docs: List[Dict[str, Any]] = []
-
-    # 1) Coveo discovery (optional) -> extra Confluence pages
-    coveo_conf = cfg.get("coveo") or {}
     discovered_urls: List[str] = []
+
+    # 2) Optional Coveo discovery
+    coveo_conf = cfg.get("coveo") or {}
     if coveo_conf.get("enabled"):
         discovered_urls = discover_with_coveo(coveo_conf)
         if discovered_urls:
-            # Append discovered as page sources
             conf = cfg.get("confluence") or {}
             srcs = conf.get("sources") or []
             for u in discovered_urls:
@@ -668,7 +729,7 @@ def run_pipeline(cfg: Dict[str, Any]) -> Dict[str, Any]:
             conf["sources"] = srcs
             cfg["confluence"] = conf
 
-    # 2) Confluence ingestion
+    # 3) Confluence ingestion
     conf = cfg.get("confluence") or {}
     if conf.get("sources") and conf.get("username") and conf.get("api_token"):
         docs_c = ingest_confluence(
@@ -680,21 +741,26 @@ def run_pipeline(cfg: Dict[str, Any]) -> Dict[str, Any]:
         )
         all_docs.extend(docs_c)
 
-    # 3) File ingestion
+    # 4) Files ingestion
     files = cfg.get("files") or []
     if files:
         docs_f = ingest_files(files)
         all_docs.extend(docs_f)
 
-    # 4) Store -> Pinecone
-    report = store_text_corpus(index_name, all_docs)
-    # Add a quick top-level summary
+    # 5) Store in Pinecone
+    report = store_text_corpus(
+        index_name=index_name,
+        corpus=all_docs,
+        az_cfg=az_cfg,
+        pinecone_api_key=pinecone_api_key,
+        pinecone_region=CONFIG.get("pinecone_region", "us-east-1"),
+    )
     report["discovered_urls"] = discovered_urls
     return report
-# ======================================================================
+# ==========================================================================
 
 
-# =============================== CLI =================================
+# ================================= CLI ===================================
 def _read_json_file(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -702,38 +768,15 @@ def _read_json_file(path: str) -> Dict[str, Any]:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python pipeline.py <config.json>")
-        print("Minimal example config:\n")
-        example = {
-            "team_name": "IAM",
-            # "index_name": "test-iam",  # optional
-            "confluence": {
-                "username": "user@company.com",
-                "api_token": "CONFLUENCE_API_TOKEN",
-                "sources": [
-                    {"type":"root","url":"https://your.atlassian.net/wiki/spaces/IAM/overview"},
-                    {"type":"page","url":"https://your.atlassian.net/wiki/spaces/IAM/pages/123456789/Page-Title"}
-                ],
-                "include_attachments": True,
-                "max_space_pages": 300
-            },
-            "coveo": {
-                "enabled": False,
-                "organization_id": "your-org-id",
-                "auth_token": "COVEO_PLATFORM_TOKEN",
-                "user_email": "user@company.com",
-                "tags": ["samplelabel"]
-            },
-            "files": ["./sample.pdf","./readme.md","./sheet.xlsx"]
-        }
-        print(json.dumps(example, indent=2))
+        print("Usage: python pipeline.py <config.json>\n")
+        print("See module docstring for a full example config.")
         sys.exit(1)
 
     cfg = _read_json_file(sys.argv[1])
     try:
-        report = run_pipeline(cfg)
-        print(json.dumps(report, indent=2))
-    except Exception as e:
+        out = run_pipeline(cfg)
+        print(json.dumps(out, indent=2))
+    except Exception:
         print("[ERROR] Pipeline failed:")
         traceback.print_exc()
         sys.exit(2)
