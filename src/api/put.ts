@@ -83,62 +83,76 @@
 // pages/api/put.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@aws-sdk/node-http-handler';
+import fs from 'fs';
+import https from 'https';
 
-const REGION = process.env.AWS_REGION || 'us-east-1';
-const BUCKET = process.env.COACH_BUCKET as string;
-const PREFIX = (process.env.COACH_PREFIX || 'coach/').replace(/^\/?/, '').replace(/\/?$/, '/') // ensure "coach/"
+function getHttpsAgent(): https.Agent | undefined {
+  const pem = process.env.COACH_CA_CERT_PEM;
+  const path = process.env.COACH_CA_CERT_PATH;
+  let ca: string | undefined;
 
-const s3 = new S3Client({ region: REGION });
-
-function safeId(input: string): string {
-  return (input || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  if (pem && pem.includes('-----BEGIN CERTIFICATE-----')) {
+    ca = pem.replace(/\\n/g, '\n');
+  } else if (path) {
+    try { ca = fs.readFileSync(path, 'utf8'); } catch { /* ignore */ }
+  }
+  return ca ? new https.Agent({ keepAlive: true, ca }) : undefined;
 }
 
-function buildKey(payload: any): string {
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const email = safeId(payload.teamEmail || payload.contactEmail || 'unknown');
-  if (payload.kind === 'registration') {
-    return `${PREFIX}registrations/${email}/registration.json`;
+function getS3() {
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const httpsAgent = getHttpsAgent();
+  return new S3Client({
+    region,
+    requestHandler: httpsAgent ? new NodeHttpHandler({ httpsAgent }) : undefined,
+  });
+}
+
+function buildKey(body: any) {
+  const prefix = process.env.COACH_PREFIX || 'coach';
+
+  // prefer contactEmail, fall back gracefully
+  const email =
+    body?.contactEmail ||
+    body?.teamEmail ||
+    body?.email;
+
+  if (!email) throw new Error('teamEmail/contactEmail is required');
+
+  if (body?.kind === 'registration') {
+    return `${prefix}/${encodeURIComponent(email)}/registration.json`;
   }
-  if (payload.kind === 'sources') {
-    return `${PREFIX}knowledge/${email}/sources-${ts}.json`;
-  }
-  return `${PREFIX}misc/${email}/data-${ts}.json`;
+  // default to sources dump
+  const ts = Date.now();
+  return `${prefix}/${encodeURIComponent(email)}/sources-${ts}.json`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!BUCKET) return res.status(500).send('Missing COACH_BUCKET');
-  if (req.method !== 'POST') return res.status(405).end('Method not allowed');
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const bucket = process.env.COACH_BUCKET;
+  if (!bucket) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { kind, teamEmail, contactEmail } = body || {};
-    if (!kind) return res.status(400).send('Field "kind" is required');
-    if (!teamEmail && !contactEmail) return res.status(400).send('Fields "teamEmail" or "contactEmail" are required');
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const Key = buildKey(body);
 
-    const key = buildKey(body);
-    const stored = {
-      ...body,
-      serverSavedAt: new Date().toISOString(),
-    };
+    const s3 = getS3();
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key,
+      Body: JSON.stringify(body, null, 2),
+      ContentType: 'application/json',
+    }));
 
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: key,
-        Body: JSON.stringify(stored, null, 2),
-        ContentType: 'application/json',
-      })
-    );
-
-    return res.status(200).json({ ok: true, key });
+    return res.status(200).json({ ok: true, key: Key });
   } catch (err: any) {
-    console.error('PUT /api/put error:', err);
-    return res.status(500).send(err?.message || 'Failed to write to S3');
+    console.error('S3 put error:', err);
+    const msg = err?.message || 'put failed';
+    return res.status(500).json({ ok: false, error: msg });
   }
 }
