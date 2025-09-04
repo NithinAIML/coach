@@ -82,37 +82,33 @@
 
 // pages/api/put.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler';
-import fs from 'fs';
 import https from 'https';
+import fs from 'fs';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+
+function readPemFromEnv(): string[] {
+  const vars = ['AWS_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS'] as const;
+  const cas: string[] = [];
+  for (const v of vars) {
+    const val = process.env[v];
+    if (!val) continue;
+    if (val.includes('-----BEGIN CERTIFICATE-----')) {
+      cas.push(val.replace(/\\n/g, '\n'));
+    } else if (fs.existsSync(val)) {
+      cas.push(fs.readFileSync(val, 'utf8'));
+    }
+  }
+  return cas;
+}
 
 function getHttpsAgent(): https.Agent | undefined {
-  const pem = process.env.COACH_CA_CERT_PEM;
-  const path = process.env.COACH_CA_CERT_PATH;
-  let ca: string | undefined;
-
-  if (pem && pem.includes('-----BEGIN CERTIFICATE-----')) {
-    ca = pem.replace(/\\n/g, '\n');
-  } else if (path) {
-    try { ca = fs.readFileSync(path, 'utf8'); } catch { /* ignore */ }
-  }
-  return ca ? new https.Agent({ keepAlive: true, ca }) : undefined;
+  const cas = readPemFromEnv();
+  return cas.length ? new https.Agent({ keepAlive: true, ca: cas }) : undefined;
 }
 
-function getS3() {
-  const region = process.env.AWS_REGION || 'us-east-1';
-  const httpsAgent = getHttpsAgent();
-  return new S3Client({
-    region,
-    requestHandler: httpsAgent ? new NodeHttpHandler({ httpsAgent }) : undefined,
-  });
-}
-
-function buildKey(body: any) {
+function computeKey(body: any) {
   const prefix = process.env.COACH_PREFIX || 'coach';
-
-  // prefer contactEmail, fall back gracefully
   const email =
     body?.contactEmail ||
     body?.teamEmail ||
@@ -123,7 +119,6 @@ function buildKey(body: any) {
   if (body?.kind === 'registration') {
     return `${prefix}/${encodeURIComponent(email)}/registration.json`;
   }
-  // default to sources dump
   const ts = Date.now();
   return `${prefix}/${encodeURIComponent(email)}/sources-${ts}.json`;
 }
@@ -137,11 +132,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const bucket = process.env.COACH_BUCKET;
   if (!bucket) return res.status(500).json({ error: 'Missing COACH_BUCKET env' });
 
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const agent = getHttpsAgent();
+  const s3 = new S3Client({
+    region,
+    requestHandler: agent ? new NodeHttpHandler({ httpsAgent: agent }) : undefined,
+  });
+
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const Key = buildKey(body);
+    const Key = computeKey(body);
 
-    const s3 = getS3();
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
       Key,
@@ -149,10 +150,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ContentType: 'application/json',
     }));
 
-    return res.status(200).json({ ok: true, key: Key });
+    return res.status(200).json({ ok: true, key: Key, message: 'Saved to S3' });
   } catch (err: any) {
     console.error('S3 put error:', err);
-    const msg = err?.message || 'put failed';
-    return res.status(500).json({ ok: false, error: msg });
+    return res.status(500).json({ ok: false, error: err?.message || 'put failed' });
   }
 }
+

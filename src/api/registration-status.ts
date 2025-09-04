@@ -1,29 +1,28 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler';
-import fs from 'fs';
 import https from 'https';
+import fs from 'fs';
+import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 
-function getHttpsAgent(): https.Agent | undefined {
-  const pem = process.env.COACH_CA_CERT_PEM;
-  const path = process.env.COACH_CA_CERT_PATH;
-  let ca: string | undefined;
-
-  if (pem && pem.includes('-----BEGIN CERTIFICATE-----')) {
-    ca = pem.replace(/\\n/g, '\n');
-  } else if (path) {
-    try { ca = fs.readFileSync(path, 'utf8'); } catch { /* ignore */ }
+function readPemFromEnv(): string[] {
+  const vars = ['AWS_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS'] as const;
+  const cas: string[] = [];
+  for (const v of vars) {
+    const val = process.env[v];
+    if (!val) continue;
+    if (val.includes('-----BEGIN CERTIFICATE-----')) {
+      // inline PEM (supports escaped \n)
+      cas.push(val.replace(/\\n/g, '\n'));
+    } else if (fs.existsSync(val)) {
+      cas.push(fs.readFileSync(val, 'utf8'));
+    }
   }
-  return ca ? new https.Agent({ keepAlive: true, ca }) : undefined;
+  return cas;
 }
 
-function getS3() {
-  const region = process.env.AWS_REGION || 'us-east-1';
-  const httpsAgent = getHttpsAgent();
-  return new S3Client({
-    region,
-    requestHandler: httpsAgent ? new NodeHttpHandler({ httpsAgent }) : undefined,
-  });
+function getHttpsAgent(): https.Agent | undefined {
+  const cas = readPemFromEnv();
+  return cas.length ? new https.Agent({ keepAlive: true, ca: cas }) : undefined;
 }
 
 function regKey(email: string) {
@@ -43,16 +42,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const email = (req.query.email as string || '').trim();
   if (!email) return res.status(400).json({ error: 'email is required' });
 
-  const s3 = getS3();
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const agent = getHttpsAgent();
+  const s3 = new S3Client({
+    region,
+    requestHandler: agent ? new NodeHttpHandler({ httpsAgent: agent }) : undefined,
+  });
 
   try {
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: regKey(email) }));
     return res.status(200).json({ registered: true });
   } catch (err: any) {
-    // Not found -> not registered. Everything else -> 500.
-    const code = err?.$metadata?.httpStatusCode;
-    if (code === 404) return res.status(200).json({ registered: false });
-
+    if (err?.$metadata?.httpStatusCode === 404) {
+      return res.status(200).json({ registered: false });
+    }
     console.error('registration-status error:', err);
     return res.status(500).json({ error: 'status check failed' });
   }
