@@ -1,0 +1,32 @@
+{
+  "index_name": "test-team-iam",
+
+  "confluence_username": "you@company.com",
+  "confluence_api_token": "ATLTOKEN_XXXXXXXXXXXXXXXXXXXXXXXX",
+  "confluence_pages": [
+    "https://yourcompany.atlassian.net/wiki/pages/123456789",
+    "https://yourcompany.atlassian.net/wiki/pages/987654321"
+  ],
+  "confluence_roots": [
+    "https://yourcompany.atlassian.net/wiki/pages/1122334455"
+  ],
+  "max_pages": 150,
+  "max_depth": 3,
+
+  "coveo_org_id": "your-coveo-org-id",
+  "coveo_platform_token": "COVEO_PLATFORM_API_TOKEN",
+  "coveo_user_email": "you@company.com",
+  "coveo_labels": ["iam", "policy", "runbook"],
+
+  "files": [
+    "docs/policy.pdf",
+    "docs/runbook.docx",
+    "docs/notes.txt",
+    "docs/data.xlsx",
+    "docs/slides.pptx",
+    "docs/sample.json",
+    "docs/table.csv"
+  ],
+
+  "report_path": "report.json"
+}
