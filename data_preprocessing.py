@@ -496,3 +496,61 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
+
+#---------------------------------------------------------
+
+from pathlib import Path
+import os, json, boto3
+
+# If your pipeline lives in pipeline.py:
+from pipeline import run_pipeline  # or: from upd_pipeline import run_pipeline
+
+def resolve_config_path() -> str:
+    """Loads config from (in order):
+    1) PIPELINE_CONFIG env var (local path or s3://bucket/key)
+    2) CONFIG_S3 env var (s3://bucket/key)
+    3) ./config.json next to the notebook
+    """
+    # 1) PIPELINE_CONFIG or CONFIG_S3
+    for var in ("PIPELINE_CONFIG", "CONFIG_S3"):
+        val = os.environ.get(var)
+        if not val:
+            continue
+        if val.startswith("s3://"):
+            bucket, key = val[5:].split("/", 1)
+            local = "/tmp/config.json"
+            boto3.client("s3").download_file(bucket, key, local)
+            print(f"[INFO] Downloaded {val} → {local}")
+            return local
+        p = Path(val).expanduser().resolve()
+        print(f"[INFO] Using local config at {p}")
+        return str(p)
+
+    # 2) Fallback to notebook folder
+    p = (Path.cwd() / "config.json").resolve()
+    print(f"[INFO] Falling back to {p}")
+    return str(p)
+
+
+CFG_PATH = resolve_config_path()
+with open(CFG_PATH, "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+# Fill defaults (won’t overwrite if already present)
+cfg.setdefault("confluence_pages", [])
+cfg.setdefault("confluence_roots", [])
+cfg.setdefault("coveo_labels", [])
+cfg.setdefault("files", [])
+cfg.setdefault("max_pages", 150)
+cfg.setdefault("max_depth", 3)
+cfg.setdefault("report_path", "report.json")
+# If your pipeline needs these:
+cfg.setdefault("confluence_include_attachments", False)
+
+# 🔥 Run
+run_pipeline(**cfg)
+
+# Show the report if produced
+if Path(cfg["report_path"]).is_file():
+    print("\n=== Report Preview ===")
+    print(Path(cfg["report_path"]).read_text()[:2000])
