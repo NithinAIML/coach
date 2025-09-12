@@ -72,29 +72,89 @@
 
 
 // pages/api/upload.ts
+// import type { NextApiRequest, NextApiResponse } from 'next';
+// import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+// import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+// const REGION = process.env.AWS_REGION || 'us-east-1';
+// const BUCKET = process.env.COACH_BUCKET as string;
+// const PREFIX = (process.env.COACH_PREFIX || 'coach/').replace(/^\/?/, '').replace(/\/?$/, '/');
+
+// const s3 = new S3Client({ region: REGION });
+
+// function safeId(input: string): string {
+//   return (input || '')
+//     .trim()
+//     .toLowerCase()
+//     .replace(/[^a-z0-9._-]+/g, '-')
+//     .replace(/-+/g, '-')
+//     .replace(/^-|-$/g, '');
+// }
+// function rand(n = 8) {
+//   return Math.random().toString(16).slice(2, 2 + n);
+// }
+// function safeFileName(name: string): string {
+//   // keep extension if present
+//   const trimmed = (name || '').replace(/\s+/g, '_');
+//   return trimmed.replace(/[^a-zA-Z0-9._-]/g, '-');
+// }
+
+// export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+//   if (!BUCKET) return res.status(500).send('Missing COACH_BUCKET');
+//   if (req.method !== 'POST') return res.status(405).end('Method not allowed');
+
+//   try {
+//     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+//     const email = body?.email as string;
+//     const files = (body?.files || []) as Array<{ name: string; type?: string; size?: number }>;
+
+//     if (!email) return res.status(400).send('Field "email" is required');
+//     if (!Array.isArray(files) || files.length === 0) return res.status(400).send('Field "files" must be a non-empty array');
+
+//     const userId = safeId(email);
+//     const day = new Date();
+//     const dayPath = `${day.getUTCFullYear()}/${(day.getUTCMonth() + 1).toString().padStart(2, '0')}/${day.getUTCDate().toString().padStart(2, '0')}`;
+
+//     const urls = await Promise.all(
+//       files.map(async (f) => {
+//         const baseName = safeFileName(f.name || `file-${rand(6)}`);
+//         const key = `${PREFIX}uploads/${userId}/${dayPath}/${Date.now()}-${rand(6)}-${baseName}`;
+
+//         const cmd = new PutObjectCommand({
+//           Bucket: BUCKET,
+//           Key: key,
+//           ContentType: f.type || 'application/octet-stream',
+//         });
+
+//         // Default expiry 15 minutes
+//         const url = await getSignedUrl(s3, cmd, { expiresIn: 15 * 60 });
+
+//         return { name: f.name, key, url };
+//       })
+//     );
+
+//     return res.status(200).json({ urls });
+//   } catch (err: any) {
+//     console.error('POST /api/upload error:', err);
+//     return res.status(500).send(err?.message || 'Failed to create presigned URLs');
+//   }
+// }
+
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const BUCKET = process.env.COACH_BUCKET as string;
-const PREFIX = (process.env.COACH_PREFIX || 'coach/').replace(/^\/?/, '').replace(/\/?$/, '/');
-
+const PREFIX = (process.env.COACH_PREFIX || 'coach/teams').replace(/^\/+|\/+$/g, '');
 const s3 = new S3Client({ region: REGION });
 
 function safeId(input: string): string {
-  return (input || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  return (input || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
-function rand(n = 8) {
-  return Math.random().toString(16).slice(2, 2 + n);
-}
+function rand(n = 8) { return Math.random().toString(16).slice(2, 2 + n); }
 function safeFileName(name: string): string {
-  // keep extension if present
   const trimmed = (name || '').replace(/\s+/g, '_');
   return trimmed.replace(/[^a-zA-Z0-9._-]/g, '-');
 }
@@ -104,7 +164,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') return res.status(405).end('Method not allowed');
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const email = body?.email as string;
     const files = (body?.files || []) as Array<{ name: string; type?: string; size?: number }>;
 
@@ -113,27 +173,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const userId = safeId(email);
     const day = new Date();
-    const dayPath = `${day.getUTCFullYear()}/${(day.getUTCMonth() + 1).toString().padStart(2, '0')}/${day.getUTCDate().toString().padStart(2, '0')}`;
+    const dayPath = `${day.getUTCFullYear()}/${String(day.getUTCMonth() + 1).padStart(2, '0')}/${String(day.getUTCDate()).padStart(2, '0')}`;
 
-    const urls = await Promise.all(
-      files.map(async (f) => {
-        const baseName = safeFileName(f.name || `file-${rand(6)}`);
-        const key = `${PREFIX}uploads/${userId}/${dayPath}/${Date.now()}-${rand(6)}-${baseName}`;
+    const uploads = await Promise.all(files.map(async (f) => {
+      const baseName = safeFileName(f.name || `file-${rand(6)}`);
+      const key = `${PREFIX}/uploads/${userId}/${dayPath}/${Date.now()}-${rand(6)}-${baseName}`;
+      const cmd = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: f.type || 'application/octet-stream' });
+      const url = await getSignedUrl(s3, cmd, { expiresIn: 15 * 60 }); // 15 min
+      return { name: f.name, key, url };
+    }));
 
-        const cmd = new PutObjectCommand({
-          Bucket: BUCKET,
-          Key: key,
-          ContentType: f.type || 'application/octet-stream',
-        });
-
-        // Default expiry 15 minutes
-        const url = await getSignedUrl(s3, cmd, { expiresIn: 15 * 60 });
-
-        return { name: f.name, key, url };
-      })
-    );
-
-    return res.status(200).json({ urls });
+    // IMPORTANT: return "uploads" (matches src/utils/s3.ts)
+    return res.status(200).json({ uploads });
   } catch (err: any) {
     console.error('POST /api/upload error:', err);
     return res.status(500).send(err?.message || 'Failed to create presigned URLs');
