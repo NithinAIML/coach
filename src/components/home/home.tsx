@@ -1062,17 +1062,17 @@
 
 // export default SelfServicePortal;
 
-// pages/home.tsx (or wherever your component lives)
-// Drop-in replacement
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import styles from "./home.module.scss";
+// ⚠️ If your utils path is different, adjust this import.
+import { putS3, presignFiles, uploadWithPresigned } from "../../utils/s3";
 
-// src/components/home/home.tsx
-// src/components/home/home.tsx
-// src/component
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import styles from './home.module.scss';
-import { putS3, presignFiles, uploadWithPresigned } from '@/utils/s3';
+/* =========================================================================
+   Types & constants
+   ========================================================================= */
 
-/* ======================= Types & constants ======================= */
+type Section = "onboard" | "dashboard" | "knowledge" | "auto" | "analytics" | "settings";
+
 type FormModel = {
   teamName: string;
   department: string;
@@ -1080,614 +1080,753 @@ type FormModel = {
   contactEmail: string;
   description: string;
 };
-type Section = 'onboard' | 'dashboard' | 'knowledge' | 'auto' | 'analytics' | 'settings';
 
-const DOMAINS = ['Select domain', 'Support', 'Engineering', 'Sales', 'HR', 'Finance'];
-const TOTAL_STEPS = 4;
-
-/* ============================ Icons ============================= */
-type IconProps = { size?: number };
-const Icon = {
-  Plus: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-  ),
-  ChartBars: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 17V9M12 17V5M17 17v-6"/></svg>
-  ),
-  Database: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zm16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3m16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3V7"/></svg>
-  ),
-  Calendar: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
-  ),
-  TrendUp: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7M15 8h5v5"/></svg>
-  ),
-  Cog: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/>
-      <path d="M12 2v3M12 19v3M4.6 5.6l2.1 2.1M17.3 18.3l2.1 2.1M2 12h3M19 12h3M4.6 18.4l2.1-2.1M17.3 5.7l2.1-2.1"/>
-    </svg>
-  ),
-  File: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>
-    </svg>
-  ),
-  Upload: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 16V6"/><path d="M8 10l4-4 4 4"/><path d="M5 20h14"/>
-    </svg>
-  ),
-  Globe: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M2.5 12h19"/><path d="M12 2.5c3 3.5 3 15.5 0 19"/><path d="M12 2.5c-3 3.5-3 15.5 0 19"/>
-    </svg>
-  ),
-  Cloud: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M20 17a4 4 0 0 0-3.5-3.96A5 5 0 0 0 7 12a4 4 0 0 0-1 7.87h12A4 4 0 0 0 20 17z"/></svg>
-  ),
-  Confluence: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 4h9l3 3v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M15 4v4h4"/><path d="M8 11h8M8 15h8"/>
-    </svg>
-  ),
-  Check: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  ),
-  Bolt: ({ size = 14 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/>
-    </svg>
-  ),
-  Spark: ({ size = 14 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill="currentColor"/>
-    </svg>
-  ),
-  Key: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <path d="M21 7a5 5 0 1 1-9.8 1H3v4h5v4h4v-4h1.2A5 5 0 0 1 21 7z" fill="currentColor"/>
-    </svg>
-  ),
-  Moon: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" fill="currentColor"/>
-    </svg>
-  ),
-  Sun: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2 12h3M19 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" stroke="currentColor" fill="none"/>
-    </svg>
-  ),
+type ConfluenceModel = {
+  sourceName: string;
+  url: string;
+  description: string;
+  autoSync: boolean;
+  frequency: "Daily" | "Weekly" | "Monthly";
+  time: string; // "09:00"
 };
 
-/* =========================== Stepper ============================ */
-const Stepper: React.FC<{ active: number; total: number }> = ({ active, total }) => {
-  const steps = Array.from({ length: total }, (_, i) => i + 1);
-  return (
-    <div className={styles.stepper} role="progressbar" aria-valuemin={1} aria-valuemax={total} aria-valuenow={active}>
-      {steps.map((s, i) => {
-        const isComplete = s < active;
-        const isActive = s === active;
-        const base = `${styles.step} ${!isComplete && !isActive ? styles.stepInactive : ''}`;
-        const style: React.CSSProperties = isComplete || isActive ? { background: 'var(--primary)', color: '#fff' } : {};
-        return (
-          <React.Fragment key={s}>
-            <div className={base} style={style}>{isComplete ? <Icon.Check/> : s}</div>
-            {i < steps.length - 1 && <div className={`${styles.connector} ${s < active ? styles.connectorActive : ''}`}/>}
-          </React.Fragment>
-        );
-      })}
+type FilesModel = {
+  sourceName: string;
+  description: string;
+  autoSync: boolean;
+  frequency: "Daily" | "Weekly" | "Monthly";
+  time: string;
+  files: File[];
+};
+
+const DOMAINS = ["Select domain", "Support", "Engineering", "Sales", "HR", "Finance"];
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* =========================================================================
+   Small shared UI bits (kept minimal to not disturb your styling)
+   ========================================================================= */
+
+const Pill: React.FC<{ tone?: "ok" | "warn" | "info"; children: React.ReactNode }> = ({
+  tone = "info",
+  children,
+}) => {
+  const toneClass =
+    tone === "ok"
+      ? styles.pillOk ?? "bg-green-100 text-green-800"
+      : tone === "warn"
+      ? styles.pillWarn ?? "bg-yellow-100 text-yellow-800"
+      : styles.pillInfo ?? "bg-blue-100 text-blue-800";
+  return <span className={`${styles.pill ?? ""} ${toneClass}`}>{children}</span>;
+};
+
+const Button: React.FC<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" }
+> = ({ variant = "primary", className = "", ...props }) => {
+  const cls =
+    variant === "secondary"
+      ? styles.btnSecondary ?? "rounded-md border px-4 py-2"
+      : variant === "ghost"
+      ? styles.btnGhost ?? "px-3 py-2"
+      : styles.btn ?? "rounded-md bg-blue-600 px-4 py-2 text-white";
+  return <button {...props} className={`${cls} ${className}`} />;
+};
+
+/* =========================================================================
+   Registration (Step 1)
+   ========================================================================= */
+
+const emptyForm: FormModel = {
+  teamName: "",
+  department: "",
+  domain: "",
+  contactEmail: "",
+  description: "",
+};
+
+function validateRegistration(m: FormModel) {
+  const errors: Partial<Record<keyof FormModel, string>> = {};
+  if (!m.teamName.trim()) errors.teamName = "Team name is required";
+  if (!m.department.trim()) errors.department = "Department is required";
+  if (!m.domain || m.domain === "Select domain") errors.domain = "Please select a domain";
+  if (!m.contactEmail.trim() || !EMAIL_RE.test(m.contactEmail)) errors.contactEmail = "Valid email required";
+  // description optional
+  return errors;
+}
+
+/* =========================================================================
+   Knowledge Sources (Step 2)
+   ========================================================================= */
+
+const emptyConfluence: ConfluenceModel = {
+  sourceName: "",
+  url: "",
+  description: "",
+  autoSync: true,
+  frequency: "Weekly",
+  time: "09:00",
+};
+
+const emptyFiles: FilesModel = {
+  sourceName: "",
+  description: "",
+  autoSync: true,
+  frequency: "Weekly",
+  time: "09:00",
+  files: [],
+};
+
+function validateConfluence(m: ConfluenceModel) {
+  const e: Partial<Record<keyof ConfluenceModel, string>> = {};
+  if (!m.sourceName.trim()) e.sourceName = "Source name is required";
+  if (!m.url.trim()) e.url = "URL is required";
+  return e;
+}
+
+function validateFiles(m: FilesModel) {
+  const e: Partial<Record<keyof FilesModel, string>> = {};
+  if (!m.sourceName.trim()) e.sourceName = "Source name is required";
+  // files optional: user may submit confluence-only or files-only
+  return e;
+}
+
+/* =========================================================================
+   Extra tabs (simple stubs so pages render)
+   ========================================================================= */
+
+const Dashboard: React.FC<{ indexName?: string; teamName?: string }> = ({ indexName, teamName }) => (
+  <div className={styles.pageWrap}>
+    <h2 className={styles.pageTitle}>Dashboard</h2>
+    <div className={styles.cardRow}>
+      <div className={styles.card}>
+        <div className={styles.cardTitle}>Team</div>
+        <div className={styles.cardBody}>{teamName || "—"}</div>
+      </div>
+      <div className={styles.card}>
+        <div className={styles.cardTitle}>Pinecone index</div>
+        <div className={styles.cardBody}>{indexName || "—"}</div>
+      </div>
+      <div className={styles.card}>
+        <div className={styles.cardTitle}>Status</div>
+        <div className={styles.cardBody}><Pill tone="ok">Healthy</Pill></div>
+      </div>
     </div>
-  );
-};
-
-/* =========================== Helpers ============================ */
-const Title: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div style={{ fontWeight: 600, fontSize: 16, margin: '2px 0 12px' }}>{children}</div>
-);
-const Card: React.FC<{ children: React.ReactNode; pad?: number; style?: React.CSSProperties }> = ({ children, pad = 18, style }) => (
-  <div className={styles.card} style={{ padding: pad, borderRadius: 12, width: '100%', boxSizing: 'border-box', overflow: 'hidden', ...style }}>{children}</div>
-);
-const Toolbar: React.FC<{ left?: React.ReactNode; right?: React.ReactNode }> = ({ left, right }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-    <div>{left}</div>
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{right}</div>
   </div>
 );
 
-/* ========================== Component =========================== */
-const SelfServicePortal: React.FC = () => {
-  const [section, setSection] = useState<Section>('onboard');
-  const [activeStep, setActiveStep] = useState<number>(1);
+const AutoRefresh: React.FC = () => (
+  <div className={styles.pageWrap}>
+    <h2 className={styles.pageTitle}>Auto-refresh (placeholder)</h2>
+    <p className={styles.muted}>Wire this to your scheduler when ready.</p>
+  </div>
+);
 
-  /* -------- Step-1 state -------- */
-  const [form, setForm] = useState<FormModel>({ teamName: '', department: '', domain: '', contactEmail: '', description: '' });
-  const [touched, setTouched] = useState<Record<keyof FormModel, boolean>>({ teamName: false, department: false, domain: false, contactEmail: false, description: false });
-  const errors = useMemo(() => {
-    const e: Partial<Record<keyof FormModel, string>> = {};
-    if (!form.teamName.trim()) e.teamName = 'Team name is required';
-    if (!form.department.trim()) e.department = 'Department is required';
-    if (!form.domain.trim()) e.domain = 'Please select a domain';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail)) e.contactEmail = 'Valid email required';
-    return e;
-  }, [form]);
-  const isStep1Valid = Object.keys(errors).length === 0;
+const Analytics: React.FC = () => (
+  <div className={styles.pageWrap}>
+    <h2 className={styles.pageTitle}>Analytics (placeholder)</h2>
+    <p className={styles.muted}>Add your charts / telemetry here.</p>
+  </div>
+);
 
-  const [savingStep1, setSavingStep1] = useState(false);
-  const [savedStep1, setSavedStep1] = useState(false);
-  const [saveErr1, setSaveErr1] = useState<string | null>(null);
-  const step1Locked = savedStep1;
+const Settings: React.FC = () => (
+  <div className={styles.pageWrap}>
+    <h2 className={styles.pageTitle}>Settings (placeholder)</h2>
+    <p className={styles.muted}>Non-blocking stub page.</p>
+  </div>
+);
 
-  /* -------- Step-2 state -------- */
-  const [sources, setSources] = useState<string[]>([]);
-  const [selectedSource, setSelectedSource] = useState<string | null>(null);
-  const [confluence, setConfluence] = useState({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
+/* =========================================================================
+   Main component
+   ========================================================================= */
 
-  const [fileUpload, setFileUpload] = useState<{
-    name: string; description: string; autoRefresh: boolean; frequency: 'Daily'|'Weekly'|'Monthly'; time: string; files: File[];
-  }>({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
+const Home: React.FC = () => {
+  const [section, setSection] = useState<Section>("onboard");
 
-  const [uploadStatuses, setUploadStatuses] = useState<Record<string, 'idle'|'uploading'|'done'|'error'>>({});
-  const [savingStep2, setSavingStep2] = useState(false);
-  const [saveErr2, setSaveErr2] = useState<string | null>(null);
-  const [step2Saved, setStep2Saved] = useState(false);
-  const [step2Msg, setStep2Msg] = useState<string | null>(null);
-  const lock2: React.CSSProperties | undefined = step2Saved ? { opacity: 0.6, pointerEvents: 'none' } : undefined;
+  // Step state
+  const [reg, setReg] = useState<FormModel>({ ...emptyForm });
+  const [regErrors, setRegErrors] = useState<Partial<Record<keyof FormModel, string>>>({});
+  const [regSubmitting, setRegSubmitting] = useState(false);
+  const [regDone, setRegDone] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const onDrop: React.DragEventHandler<HTMLDivElement> = (e) => { e.preventDefault(); const f = Array.from(e.dataTransfer.files || []); if (!step2Saved && f.length) setFileUpload(p => ({ ...p, files: [...p.files, ...f] })); };
-  const onDragOver: React.DragEventHandler<HTMLDivElement> = (e) => e.preventDefault();
-  const onFilePick: React.ChangeEventHandler<HTMLInputElement> = (e) => { const f = Array.from(e.target.files || []); if (!step2Saved && f.length) setFileUpload(p => ({ ...p, files: [...p.files, ...f] })); };
-  const removeFile = (i: number) => { if (step2Saved) return; setFileUpload(p => ({ ...p, files: p.files.filter((_, idx) => idx !== i) })); };
+  const [activeKnowledgePane, setActiveKnowledgePane] = useState<"confluence" | "files">("confluence");
+  const [conf, setConf] = useState<ConfluenceModel>({ ...emptyConfluence });
+  const [confErrors, setConfErrors] = useState<Partial<Record<keyof ConfluenceModel, string>>>({});
+  const [filesModel, setFilesModel] = useState<FilesModel>({ ...emptyFiles });
+  const [filesErrors, setFilesErrors] = useState<Partial<Record<keyof FilesModel, string>>>({});
+  const [filesUploading, setFilesUploading] = useState(false);
+  const [knowledgeSubmitting, setKnowledgeSubmitting] = useState(false);
+  const [knowledgeDone, setKnowledgeDone] = useState(false);
 
-  /* -------- Step-3/4 (unchanged) -------- */
-  const [processing, setProcessing] = useState(false);
-  const [processed, setProcessed] = useState(false);
-  const [testQuestions, setTestQuestions] = useState<string[]>(['']);
-  const [testing, setTesting] = useState(false);
-  const [deployed, setDeployed] = useState(false);
-  const [deployToCrewMate, setDeployToCrewMate] = useState(true);
-  const chunksCreated = 800 + sources.length * 200 + fileUpload.files.length * 15;
-  const qualityScore = 98;
-
-  /* -------- Navigation gating -------- */
-  const canContinue =
-    activeStep === 1 ? savedStep1 :
-    activeStep === 2 ? step2Saved && !savingStep2 :
-    activeStep === 3 ? processed && !processing :
-    true;
-
-  function goNext() {
-    if (activeStep === TOTAL_STEPS) return;
-    if (activeStep === 1) {
-      setTouched({ teamName: true, department: true, domain: true, contactEmail: true, description: true });
-      if (!isStep1Valid || !savedStep1) return;
-    }
-    setActiveStep(s => Math.min(TOTAL_STEPS, s + 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  function goPrev() {
-    if (activeStep === 1) return;
-    if (activeStep === 2 && step2Saved) return; // lock back-navigation after Step-2 submit
-    setActiveStep(s => Math.max(1, s - 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  /* ================= Step-1: Register -> S3 ================= */
-  async function submitTeamRegistration() {
-    setSaveErr1(null);
-    if (!isStep1Valid) {
-      setTouched({ teamName: true, department: true, domain: true, contactEmail: true, description: true });
-      return;
-    }
+  // Persist minimal flags so refreshes keep the lock state (not auth – just UX)
+  useEffect(() => {
     try {
-      setSavingStep1(true);
-      const payload = { kind: 'registration', ...form, savedAt: new Date().toISOString() };
-      const res = await putS3(payload);
-      if (!res?.ok) throw new Error('Registration failed');
-      setSavedStep1(true);
-    } catch (e: any) {
-      setSaveErr1(e?.message || 'Failed to register team');
+      const s = localStorage.getItem("coach.regDone");
+      if (s === "1") setRegDone(true);
+      const k = localStorage.getItem("coach.knowledgeDone");
+      if (k === "1") setKnowledgeDone(true);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("coach.regDone", regDone ? "1" : "0");
+      localStorage.setItem("coach.knowledgeDone", knowledgeDone ? "1" : "0");
+    } catch {}
+  }, [regDone, knowledgeDone]);
+
+  /* ------------------------------- Actions ------------------------------ */
+
+  const canContinueFromReg = regDone;
+  const canContinueFromKnowledge = knowledgeDone;
+
+  const onSubmitRegistration = async () => {
+    const errors = validateRegistration(reg);
+    setRegErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    setRegSubmitting(true);
+    try {
+      // Store registration payload to S3 (key format can be anything your /api/put expects)
+      await putS3({
+        key: `teams/${reg.teamName || "team"}/registration.json`,
+        body: JSON.stringify(reg),
+        contentType: "application/json",
+      });
+
+      setRegDone(true);
+    } catch (e) {
+      console.error("Registration save failed:", e);
+      alert("Registration failed. Please try again.");
     } finally {
-      setSavingStep1(false);
+      setRegSubmitting(false);
     }
-  }
+  };
 
-  /* ================= Step-2: Save sources (from either panel) ================= */
-  async function submitStep2Only() {
-    setSaveErr2(null);
-    setSavingStep2(true);
-    const uploaded: Array<{ name: string; key: string }> = [];
-    const files = fileUpload.files;
+  const onSubmitKnowledge = async (from: "confluence" | "files") => {
+    // validate the pane that is being submitted
+    if (from === "confluence") {
+      const errs = validateConfluence(conf);
+      setConfErrors(errs);
+      if (Object.keys(errs).length) return;
+    } else {
+      const errs = validateFiles(filesModel);
+      setFilesErrors(errs);
+      if (Object.keys(errs).length) return;
+    }
 
+    setKnowledgeSubmitting(true);
     try {
-      if (files.length > 0) {
-        const st: Record<string, 'idle' | 'uploading' | 'done' | 'error'> = {};
-        files.forEach((f) => (st[f.name] = 'idle'));
-        setUploadStatuses(st);
-
-        const presigned = await presignFiles(form.contactEmail, files);
-        for (const p of presigned) {
-          const f = files.find(ff => ff.name === p.name);
-          if (!f) { setUploadStatuses(s => ({ ...s, [p.name]: 'error' })); throw new Error(`Missing file ${p.name}`); }
-          setUploadStatuses(s => ({ ...s, [p.name]: 'uploading' }));
-          await uploadWithPresigned(p, f);
-          setUploadStatuses(s => ({ ...s, [p.name]: 'done' }));
-          uploaded.push({ name: p.name, key: p.key });
-        }
+      // 1) Upload files (if any)
+      if (from === "files" && filesModel.files && filesModel.files.length > 0) {
+        setFilesUploading(true);
+        const presigned = await presignFiles(
+          filesModel.files.map((f) => ({ filename: f.name, contentType: f.type || "application/octet-stream" }))
+        );
+        await uploadWithPresigned(presigned, filesModel.files);
+        setFilesUploading(false);
       }
 
+      // 2) Save combined knowledge sources snapshot
       const payload = {
-        kind: 'sources',
-        contactEmail: form.contactEmail,
-        selected: sources,
-        confluence,
-        fileUpload: {
-          ...fileUpload,
-          filesMeta: files.map((f) => ({ name: f.name, size: f.size, type: (f as any).type || undefined })),
-          filesS3: uploaded,
+        confluence: conf,
+        files: {
+          sourceName: filesModel.sourceName,
+          description: filesModel.description,
+          autoSync: filesModel.autoSync,
+          frequency: filesModel.frequency,
+          time: filesModel.time,
+          // (filenames only — actual file bytes are uploaded above)
+          fileNames: (filesModel.files || []).map((f) => f.name),
         },
-        savedAt: new Date().toISOString(),
       };
-      const res = await putS3(payload);
-      if (!res?.ok) throw new Error('Failed to save knowledge sources');
 
-      setStep2Saved(true);
-      setStep2Msg('Knowledge sources saved successfully. You can continue to processing.');
-    } catch (e: any) {
-      setSaveErr2(e?.message || 'Failed to save knowledge sources');
+      await putS3({
+        key: `teams/${reg.teamName || "team"}/knowledge-sources.json`,
+        body: JSON.stringify(payload),
+        contentType: "application/json",
+      });
+
+      setKnowledgeDone(true);
+    } catch (e) {
+      console.error("Knowledge save failed:", e);
+      alert("Saving knowledge sources failed. Please try again.");
     } finally {
-      setSavingStep2(false);
+      setKnowledgeSubmitting(false);
     }
-  }
+  };
 
-  /* ==================== Static views (unchanged UI) ==================== */
-  const KnowledgeSourcesView = (
-    <div className={styles.cardWrap}>
-      <Toolbar
-        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Knowledge sources</h2>}
-        right={
-          <>
-            <button type="button" className={styles.btn} style={{ background: 'var(--success)', color: '#fff' }}>⟳ Sync all</button>
-            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { setSection('onboard'); setActiveStep(2); }}>+ Add source</button>
-          </>
-        }
-      />
-      <Card pad={22}>
-        <div className={styles.emptyState} style={{ paddingTop: 30, paddingBottom: 18 }}>
-          <div className={styles.emptyIcon}><Icon.Database size={28} /></div>
-          <p className={styles.emptyText} style={{ marginBottom: 6 }}>No knowledge sources configured yet.</p>
-          <button type="button" onClick={() => { setSection('onboard'); setActiveStep(2); }} style={{ appearance: 'none', background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>
-            Add your first knowledge source →
-          </button>
-        </div>
-      </Card>
+  /* ----------------------------- Render bits ---------------------------- */
+
+  const renderTopNav = () => (
+    <div className={styles.topnav}>
+      <button className={section === "onboard" ? styles.tabActive : styles.tab} onClick={() => setSection("onboard")}>
+        + Onboard team
+      </button>
+      <button className={section === "dashboard" ? styles.tabActive : styles.tab} onClick={() => setSection("dashboard")}>
+        Dashboard
+      </button>
+      <button className={section === "knowledge" ? styles.tabActive : styles.tab} onClick={() => setSection("knowledge")}>
+        Knowledge sources
+      </button>
+      <button className={section === "auto" ? styles.tabActive : styles.tab} onClick={() => setSection("auto")}>
+        Auto-refresh
+      </button>
+      <button className={section === "analytics" ? styles.tabActive : styles.tab} onClick={() => setSection("analytics")}>
+        Analytics
+      </button>
+      <button className={section === "settings" ? styles.tabActive : styles.tab} onClick={() => setSection("settings")}>
+        Settings
+      </button>
     </div>
   );
 
-  // (Dashboard/Auto/Analytics/Settings views omitted for brevity — keep your originals)
-
-  /* -------------------------- Sub-nav ----------------------------- */
-  const SubnavLink: React.FC<{ id: Section; icon: React.ReactNode; label: string }> = ({ id, icon, label }) => (
-    <a href="#" className={`${styles.subnavLink} ${section === id ? styles.subnavLinkActive : ''}`} onClick={(e) => { e.preventDefault(); setSection(id); }}>
-      {icon}<span>{label}</span>
-    </a>
+  const renderStepper = (active: number) => (
+    <div className={styles.stepper}>
+      {[1, 2, 3, 4].map((n) => (
+        <span key={n} className={`${styles.step} ${n === active ? styles.stepActive : ""}`}>
+          {n}
+        </span>
+      ))}
+    </div>
   );
 
-  const big = 26;
-  const dropzoneStyle: React.CSSProperties = { border: '2px dashed var(--line-2)', background: '#fff', borderRadius: 8, padding: 18, textAlign: 'center', color: 'var(--muted)', cursor: 'pointer' };
-  function addSource(kind: string) { setSources(p => (p.includes(kind) ? p : [...p, kind])); setSelectedSource(kind); }
-  function removeSource(kind: string) {
-    setSources(prev => prev.filter(k => k !== kind));
-    if (selectedSource === kind) setSelectedSource(null);
-    if (kind === 'Confluence') setConfluence({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
-    if (kind === 'File Upload') setFileUpload({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
-  }
+  /* --------------------------- Step 1: Register ------------------------- */
 
-  return (
-    <>
-      {/* App Bar */}
-      <header className={styles.appbar}>
-        <div className={`${styles.container} ${styles.appbarInner}`}>
-          <div className={styles.brand}>
-            <div className={styles.brandTitle}>COACH Self-Service Portal</div>
-            <div className={styles.brandSub}>AI-powered knowledge management platform</div>
+  const renderRegistration = () => (
+    <div className={styles.pageWrap}>
+      <div className={styles.headerRow}>
+        <h2 className={styles.pageTitle}>Team registration</h2>
+        <div className={styles.statusRight}>
+          Step 1 of 4 <span className={styles.dotOnline}>●</span> System online
+        </div>
+      </div>
+
+      {renderStepper(1)}
+
+      <div className={`${styles.card} ${regDone ? styles.disabled : ""}`}>
+        <div className={styles.formGrid}>
+          <div className={styles.formItem}>
+            <label className={styles.label}>Team name *</label>
+            <input
+              className={styles.input}
+              value={reg.teamName}
+              onChange={(e) => setReg((s) => ({ ...s, teamName: e.target.value }))}
+              disabled={regDone}
+              placeholder="e.g., Cloud Support Team"
+            />
+            {regErrors.teamName && <div className={styles.error}>{regErrors.teamName}</div>}
           </div>
-          <div className={styles.appbarRight}>
-            <span>
-              {section === 'onboard'   ? `Step ${activeStep} of ${TOTAL_STEPS}` :
-               section === 'dashboard' ? 'Dashboard' :
-               section === 'knowledge' ? 'Knowledge sources' :
-               section === 'auto'      ? 'Auto-refresh' :
-               section === 'analytics' ? 'Analytics' : 'Settings'}
-            </span>
-            <span><i className={styles.statusDot} />System online</span>
+
+          <div className={styles.formItem}>
+            <label className={styles.label}>Department *</label>
+            <input
+              className={styles.input}
+              value={reg.department}
+              onChange={(e) => setReg((s) => ({ ...s, department: e.target.value }))}
+              disabled={regDone}
+              placeholder="e.g., ESAF"
+            />
+            {regErrors.department && <div className={styles.error}>{regErrors.department}</div>}
+          </div>
+
+          <div className={styles.formItem}>
+            <label className={styles.label}>Domain *</label>
+            <select
+              className={styles.select}
+              value={reg.domain || "Select domain"}
+              onChange={(e) => setReg((s) => ({ ...s, domain: e.target.value }))}
+              disabled={regDone}
+            >
+              {DOMAINS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+            {regErrors.domain && <div className={styles.error}>{regErrors.domain}</div>}
+          </div>
+
+          <div className={styles.formItem}>
+            <label className={styles.label}>Contact email *</label>
+            <input
+              className={styles.input}
+              value={reg.contactEmail}
+              onChange={(e) => setReg((s) => ({ ...s, contactEmail: e.target.value }))}
+              disabled={regDone}
+              placeholder="team-lead@company.com"
+            />
+            {regErrors.contactEmail && <div className={styles.error}>{regErrors.contactEmail}</div>}
+          </div>
+
+          <div className={styles.formItemFull}>
+            <label className={styles.label}>Team description</label>
+            <textarea
+              className={styles.textarea}
+              value={reg.description}
+              onChange={(e) => setReg((s) => ({ ...s, description: e.target.value }))}
+              disabled={regDone}
+              placeholder="Brief description of your team's responsibilities"
+              rows={4}
+            />
           </div>
         </div>
-      </header>
 
-      {/* Subnav */}
-      <nav className={styles.subnav}>
-        <div className={`${styles.container} ${styles.subnavInner}`}>
-          <SubnavLink id="onboard"   icon={<Icon.Plus />}      label="Onboard team" />
-          <SubnavLink id="dashboard" icon={<Icon.ChartBars />} label="Dashboard" />
-          <SubnavLink id="knowledge" icon={<Icon.Database />}  label="Knowledge sources" />
-          <SubnavLink id="auto"      icon={<Icon.Calendar />}  label="Auto-refresh" />
-          <SubnavLink id="analytics" icon={<Icon.TrendUp />}   label="Analytics" />
-          <SubnavLink id="settings"  icon={<Icon.Cog />}       label="Settings" />
+        <div className={styles.actionsRow}>
+          {/* No Previous button on page 1 */}
+          <div className={styles.leftGroup}>
+            {regDone ? (
+              <Pill tone="ok">Team registration successful. You can continue.</Pill>
+            ) : (
+              <></>
+            )}
+          </div>
+
+          <div className={styles.rightGroup}>
+            {!regDone && (
+              <Button onClick={onSubmitRegistration} disabled={regSubmitting}>
+                {regSubmitting ? "Submitting..." : "Submit"}
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              disabled={!canContinueFromReg}
+              onClick={() => setSection("knowledge")}
+              className={styles.ml8}
+            >
+              Continue
+            </Button>
+          </div>
         </div>
-      </nav>
+      </div>
+    </div>
+  );
 
-      {/* Content */}
-      <main className={styles.page}>
-        <div className={styles.container} style={{ minWidth: 0 }}>
-          {section === 'knowledge' && KnowledgeSourcesView}
+  /* ------------------------ Step 2: Knowledge sources ------------------- */
 
-          {section === 'onboard' && (
+  const renderConfluencePanel = () => (
+    <div className={`${styles.subCard} ${knowledgeDone ? styles.disabled : ""}`}>
+      <div className={styles.subHeader}>
+        <strong>Confluence space</strong>
+        <div className={styles.linkRow}>
+          <Button variant="ghost" onClick={() => setActiveKnowledgePane("files")}>
+            Go to File upload
+          </Button>
+        </div>
+      </div>
+
+      <div className={styles.formGrid}>
+        <div className={styles.formItem}>
+          <label className={styles.label}>Source name *</label>
+          <input
+            className={styles.input}
+            value={conf.sourceName}
+            onChange={(e) => setConf((s) => ({ ...s, sourceName: e.target.value }))}
+            disabled={knowledgeDone}
+            placeholder="Confluence space name"
+          />
+          {confErrors.sourceName && <div className={styles.error}>{confErrors.sourceName}</div>}
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.label}>URL / path *</label>
+          <input
+            className={styles.input}
+            value={conf.url}
+            onChange={(e) => setConf((s) => ({ ...s, url: e.target.value }))}
+            disabled={knowledgeDone}
+            placeholder="https://company.atlassian.net/wiki/spaces/SPACE"
+          />
+          {confErrors.url && <div className={styles.error}>{confErrors.url}</div>}
+        </div>
+
+        <div className={styles.formItemFull}>
+          <label className={styles.label}>Description</label>
+          <textarea
+            className={styles.textarea}
+            rows={3}
+            value={conf.description}
+            onChange={(e) => setConf((s) => ({ ...s, description: e.target.value }))}
+            disabled={knowledgeDone}
+            placeholder="Brief description of this knowledge source"
+          />
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
+              checked={conf.autoSync}
+              onChange={(e) => setConf((s) => ({ ...s, autoSync: e.target.checked }))}
+              disabled={knowledgeDone}
+            />
+            <span>Enable auto-sync</span>
+          </label>
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.label}>Frequency</label>
+          <select
+            className={styles.select}
+            value={conf.frequency}
+            onChange={(e) => setConf((s) => ({ ...s, frequency: e.target.value as any }))}
+            disabled={knowledgeDone}
+          >
+            <option>Daily</option>
+            <option>Weekly</option>
+            <option>Monthly</option>
+          </select>
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.label}>Time</label>
+          <input
+            type="time"
+            className={styles.input}
+            value={conf.time}
+            onChange={(e) => setConf((s) => ({ ...s, time: e.target.value }))}
+            disabled={knowledgeDone}
+          />
+        </div>
+      </div>
+
+      <div className={styles.actionsRow}>
+        <div className={styles.leftGroup}>
+          {knowledgeDone && <Pill tone="ok">Knowledge saved successfully. You can continue.</Pill>}
+        </div>
+        <div className={styles.rightGroup}>
+          {!knowledgeDone && (
             <>
-              <div className={styles.stepperWrap}><Stepper active={activeStep} total={TOTAL_STEPS} /></div>
-              <div className={styles.cardWrap}>
-                <div className={styles.card}>
-                  <h2 className={styles.cardTitle} style={{ fontWeight: 600 }}>
-                    {activeStep === 1 ? 'Team registration' : activeStep === 2 ? 'Knowledge sources' : activeStep === 3 ? 'Processing knowledge' : 'Test & deploy'}
-                  </h2>
-                  {activeStep === 2 && <p className={styles.cardSubtext}>Add your team’s knowledge sources to create the AI knowledge base.</p>}
-                  {activeStep === 3 && <p className={styles.cardSubtext}>Ready to process your knowledge sources.</p>}
-
-                  {/* Step 1 */}
-                  {activeStep === 1 && (
-                    <form onSubmit={(e) => e.preventDefault()} noValidate>
-                      <div className={styles.formGrid}>
-                        <div>
-                          <label className={`${styles.label} ${styles.required}`} htmlFor="teamName">Team name</label>
-                          <input id="teamName" className={styles.input} placeholder="e.g., Cloud Support Team" value={form.teamName} onChange={e => setForm(p => ({ ...p, teamName: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, teamName: true }))} aria-invalid={!!(touched.teamName && errors.teamName)} aria-describedby="err-teamName" disabled={step1Locked}/>
-                          {touched.teamName && errors.teamName && <div id="err-teamName" className={styles.errorText}>{errors.teamName}</div>}
-                        </div>
-                        <div>
-                          <label className={`${styles.label} ${styles.required}`} htmlFor="department">Department</label>
-                          <input id="department" className={styles.input} placeholder="e.g., ESAF" value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, department: true }))} aria-invalid={!!(touched.department && errors.department)} aria-describedby="err-dept" disabled={step1Locked}/>
-                          {touched.department && errors.department && <div id="err-dept" className={styles.errorText}>{errors.department}</div>}
-                        </div>
-                        <div>
-                          <label className={`${styles.label} ${styles.required}`} htmlFor="domain">Domain</label>
-                          <select id="domain" className={styles.select} value={form.domain} onChange={e => setForm(p => ({ ...p, domain: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, domain: true }))} disabled={step1Locked}>
-                            {DOMAINS.map((d, i) => <option value={i === 0 ? '' : d} key={d} disabled={i === 0}>{d}</option>)}
-                          </select>
-                          {touched.domain && errors.domain && <div className={styles.errorText}>{errors.domain}</div>}
-                        </div>
-                        <div>
-                          <label className={`${styles.label} ${styles.required}`} htmlFor="email">Contact email</label>
-                          <input id="email" className={styles.input} placeholder="team-lead@company.com" value={form.contactEmail} onChange={e => setForm(p => ({ ...p, contactEmail: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, contactEmail: true }))} inputMode="email" autoComplete="email" aria-invalid={!!(touched.contactEmail && errors.contactEmail)} aria-describedby="err-email" disabled={step1Locked}/>
-                          {touched.contactEmail && errors.contactEmail && <div id="err-email" className={styles.errorText}>{errors.contactEmail}</div>}
-                        </div>
-                        <div>
-                          <label className={styles.label} htmlFor="desc">Team description</label>
-                          <textarea id="desc" className={styles.textarea} placeholder="Brief description of your team's responsibilities" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} onBlur={() => setTouched(t => ({ ...t, description: true }))} disabled={step1Locked}/>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                        <button type="button" className={styles.btn} onClick={submitTeamRegistration} disabled={savingStep1 || !isStep1Valid || step1Locked} style={{ background: 'var(--primary)', color: '#fff' }}>
-                          {savingStep1 ? 'Submitting…' : (savedStep1 ? 'Submitted ✓' : 'Submit')}
-                        </button>
-                        {savedStep1 && (
-                          <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: '8px 10px', borderRadius: 8 }}>
-                            <Icon.Check size={14} /> Team registration successful. You can continue.
-                          </span>
-                        )}
-                        {saveErr1 && !savedStep1 && (
-                          <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: '8px 10px', borderRadius: 8 }}>
-                            {saveErr1}
-                          </span>
-                        )}
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Step 2 */}
-                  {activeStep === 2 && (
-                    <>
-                      <div className={styles.sourcesGrid} role="group" aria-label="Add knowledge source" style={lock2}>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'Confluence' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('Confluence')} aria-pressed={selectedSource === 'Confluence'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Confluence size={big} /></span><span className={styles.sourceBtnLabel}>Confluence space</span></span>
-                        </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'File Upload' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('File Upload')} aria-pressed={selectedSource === 'File Upload'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.File size={big} /></span><span className={styles.sourceBtnLabel}>File upload</span></span>
-                        </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'SharePoint' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('SharePoint')} aria-pressed={selectedSource === 'SharePoint'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Globe size={big} /></span><span className={styles.sourceBtnLabel}>SharePoint</span></span>
-                        </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'OneDrive' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('OneDrive')} aria-pressed={selectedSource === 'OneDrive'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Cloud size={big} /></span><span className={styles.sourceBtnLabel}>OneDrive</span></span>
-                        </button>
-                      </div>
-
-                      {/* Confluence */}
-                      {selectedSource === 'Confluence' && (
-                        <section className={styles.sourcePanel} aria-labelledby="confluence-panel-title" style={lock2}>
-                          <header className={styles.sourcePanelHeader}>
-                            <div className={styles.sourcePanelTitle} id="confluence-panel-title"><Icon.Confluence /><span>Confluence space</span></div>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                              <button type="button" className={styles.btn} onClick={() => setSelectedSource('File Upload')} disabled={step2Saved}>Go to File upload</button>
-                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('Confluence')} aria-label="Remove Confluence source" disabled={step2Saved}>✕</button>
-                            </div>
-                          </header>
-                          <div className={styles.sourcePanelBody}>
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-name">Source name</label><input id="cf-name" className={styles.input} placeholder="Confluence space name" value={confluence.name} onChange={e => setConfluence(p => ({ ...p, name: e.target.value }))} disabled={step2Saved}/></div>
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="cf-url">URL / path</label><input id="cf-url" className={styles.input} placeholder="https://company.atlassian.net/wiki/spaces/SPACE" value={confluence.url} onChange={e => setConfluence(p => ({ ...p, url: e.target.value }))} inputMode="url" autoComplete="url" disabled={step2Saved}/></div>
-                            <div><label className={styles.label} htmlFor="cf-desc">Description</label><textarea id="cf-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={confluence.description} onChange={e => setConfluence(p => ({ ...p, description: e.target.value }))} disabled={step2Saved}/></div>
-                            <div className={styles.autorefresh}>
-                              <div className={styles.autorefreshRow}>
-                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={confluence.autoRefresh} onChange={e => setConfluence(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} disabled={step2Saved}/>Enable auto-sync</label>
-                                <select className={styles.select} aria-label="Frequency" value={confluence.frequency} onChange={e => setConfluence(p => ({ ...p, frequency: e.target.value }))} disabled={step2Saved}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
-                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={confluence.time} onChange={e => setConfluence(p => ({ ...p, time: e.target.value }))} disabled={step2Saved}/>
-                              </div>
-                            </div>
-
-                            {/* Submit for Confluence */}
-                            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
-                                {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
-                              </button>
-                              {step2Saved && (
-                                <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: '8px 10px', borderRadius: 8 }}>
-                                  <Icon.Check size={14} /> {step2Msg || 'Knowledge sources saved successfully. You can continue to processing.'}
-                                </span>
-                              )}
-                              {saveErr2 && !step2Saved && (
-                                <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: '8px 10px', borderRadius: 8 }}>
-                                  {saveErr2}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </section>
-                      )}
-
-                      {/* File upload */}
-                      {selectedSource === 'File Upload' && (
-                        <section className={styles.sourcePanel} aria-labelledby="file-panel-title" style={lock2}>
-                          <header className={styles.sourcePanelHeader}>
-                            <div className={styles.sourcePanelTitle} id="file-panel-title"><Icon.File /><span>File upload</span></div>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                              <button type="button" className={styles.btn} onClick={() => setSelectedSource('Confluence')} disabled={step2Saved}>Go to Confluence</button>
-                              <button type="button" className={styles.sourcePanelClose} onClick={() => removeSource('File Upload')} aria-label="Remove File Upload source" disabled={step2Saved}>✕</button>
-                            </div>
-                          </header>
-                          <div className={styles.sourcePanelBody}>
-                            <div><label className={`${styles.label} ${styles.required}`} htmlFor="fu-name">Source name</label><input id="fu-name" className={styles.input} placeholder="Source name" value={fileUpload.name} onChange={e => setFileUpload(p => ({ ...p, name: e.target.value }))} disabled={step2Saved}/></div>
-                            <div>
-                              <label className={styles.label} htmlFor="fu-files">Upload files</label>
-                              <div id="fu-files" style={dropzoneStyle} onDragOver={onDragOver} onDrop={step2Saved ? undefined : onDrop} onClick={() => { if (!step2Saved) fileInputRef.current?.click(); }} role="button" aria-disabled={step2Saved}>
-                                <div style={{ display: 'grid', placeItems: 'center', gap: 8 }}>
-                                  <Icon.Upload size={24} />
-                                  <div>Click to upload or drag and drop</div>
-                                  <div style={{ fontSize: 12 }}>PDF, DOC, TXT, MD, JSON, XML files supported</div>
-                                </div>
-                                <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.json,.xml" style={{ display: 'none' }} onChange={onFilePick} disabled={step2Saved}/>
-                              </div>
-                              {fileUpload.files.length > 0 && (
-                                <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                                  {fileUpload.files.map((f, idx) => (
-                                    <li key={`${f.name}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                      <span>{f.name}</span>
-                                      {uploadStatuses[f.name] && (
-                                        <span style={{ fontSize: 12, color:
-                                          uploadStatuses[f.name] === 'done' ? '#166534' :
-                                          uploadStatuses[f.name] === 'uploading' ? '#1f2937' :
-                                          uploadStatuses[f.name] === 'error' ? '#9a3412' : '#6b7280'
-                                        }}>
-                                          {uploadStatuses[f.name] === 'done' && '✓ uploaded'}
-                                          {uploadStatuses[f.name] === 'uploading' && 'uploading…'}
-                                          {uploadStatuses[f.name] === 'error' && 'failed'}
-                                        </span>
-                                      )}
-                                      <button type="button" aria-label={`Remove ${f.name}`} onClick={() => removeFile(idx)} className={styles.sourcePanelClose} style={{ padding: '2px 6px' }} disabled={step2Saved}>✕</button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                            <div><label className={styles.label} htmlFor="fu-desc">Description</label><textarea id="fu-desc" className={styles.textarea} placeholder="Brief description of this knowledge source" value={fileUpload.description} onChange={e => setFileUpload(p => ({ ...p, description: e.target.value }))} disabled={step2Saved}/></div>
-                            <div className={styles.autorefresh}>
-                              <div className={styles.autorefreshRow}>
-                                <label className={styles.autorefreshLabel}><input type="checkbox" checked={fileUpload.autoRefresh} onChange={e => setFileUpload(p => ({ ...p, autoRefresh: e.target.checked }))} style={{ marginRight: 8 }} disabled={step2Saved}/>Enable auto-sync</label>
-                                <select className={styles.select} aria-label="Frequency" value={fileUpload.frequency} onChange={e => setFileUpload(p => ({ ...p, frequency: e.target.value as any }))} disabled={step2Saved}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>
-                                <input className={styles.timeInput} type="time" aria-label="Preferred time" value={fileUpload.time} onChange={e => setFileUpload(p => ({ ...p, time: e.target.value }))} disabled={step2Saved}/>
-                              </div>
-                            </div>
-
-                            {/* Submit for File upload */}
-                            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
-                                {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
-                              </button>
-                              {step2Saved && (
-                                <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#e9fbe7', border: '1px solid #bbf7d0', color: '#14532d', padding: '8px 10px', borderRadius: 8 }}>
-                                  <Icon.Check size={14} /> {step2Msg || 'Knowledge sources saved successfully. You can continue to processing.'}
-                                </span>
-                              )}
-                              {saveErr2 && !step2Saved && (
-                                <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: '8px 10px', borderRadius: 8 }}>
-                                  {saveErr2}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </section>
-                      )}
-                    </>
-                  )}
-
-                  {/* Step 3 */}
-                  {activeStep === 3 && (
-                    <div style={{ display: 'grid', gap: 16 }}>
-                      <div style={{ background: '#eef2ff', color: '#1f2937', borderRadius: 10, padding: '14px 16px' }} aria-live="polite">
-                        <strong style={{ fontWeight: 600 }}>Sources to process: </strong>{sources.length > 0 ? sources.join(', ') : 'None selected'}
-                      </div>
-                      <div style={{ display: 'grid', placeItems: 'center', paddingTop: 4 }}>
-                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { if (processing) return; setProcessing(true); setProcessed(false); setTimeout(() => { setProcessing(false); setProcessed(true); }, 1600); }} disabled={processing} aria-busy={processing}>
-                          {processing ? 'Running…' : 'Start processing'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Step 4 (unchanged summary) */}
-                  {activeStep === 4 && (
-                    <div style={{ display: 'grid', gap: 18 }}>
-                      <div role="status" aria-live="polite" style={{ background: '#e9fbe7', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, color: '#14532d' }}>
-                        <div style={{ fontWeight: 600, marginBottom: 6 }}>Processing complete</div>
-                        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
-                          <li>{sources.length} knowledge {sources.length === 1 ? 'source' : 'sources'} processed</li>
-                          <li>{chunksCreated.toLocaleString()} content chunks created</li>
-                          <li>{qualityScore}% quality score</li>
-                          <li>Ready for deployment</li>
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Footer */}
-                  <div className={styles.formFooter}>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnGhost}`}
-                      onClick={goPrev}
-                      disabled={activeStep === 1 || processing || (activeStep === 2 && step2Saved)}
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnPrimary}`}
-                      onClick={() => {
-                        if (activeStep === 2) {
-                          if (step2Saved) goNext();
-                          else submitStep2Only().then(() => step2Saved && goNext());
-                        } else {
-                          goNext();
-                        }
-                      }}
-                      disabled={!canContinue}
-                    >
-                      {activeStep === 3 && processing ? 'Processing…' : activeStep === TOTAL_STEPS ? 'Finish' : 'Continue'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <Button onClick={() => onSubmitKnowledge("confluence")} disabled={knowledgeSubmitting}>
+                {knowledgeSubmitting ? "Submitting..." : "Submit"}
+              </Button>
             </>
           )}
         </div>
-      </main>
-    </>
+      </div>
+    </div>
+  );
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const renderFilesPanel = () => (
+    <div className={`${styles.subCard} ${knowledgeDone ? styles.disabled : ""}`}>
+      <div className={styles.subHeader}>
+        <strong>File upload</strong>
+        <div className={styles.linkRow}>
+          <Button variant="ghost" onClick={() => setActiveKnowledgePane("confluence")}>
+            Go to Confluence
+          </Button>
+        </div>
+      </div>
+
+      <div className={styles.formGrid}>
+        <div className={styles.formItem}>
+          <label className={styles.label}>Source name *</label>
+          <input
+            className={styles.input}
+            value={filesModel.sourceName}
+            onChange={(e) => setFilesModel((s) => ({ ...s, sourceName: e.target.value }))}
+            disabled={knowledgeDone}
+            placeholder="Source name"
+          />
+          {filesErrors.sourceName && <div className={styles.error}>{filesErrors.sourceName}</div>}
+        </div>
+
+        <div className={styles.formItemFull}>
+          <label className={styles.label}>Upload files</label>
+          <div className={styles.dropArea} onClick={() => fileInputRef.current?.click()}>
+            Click to upload or drag and drop
+            <div className={styles.hint}>PDF, DOC, TXT, MD, JSON, XML files supported</div>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            disabled={knowledgeDone}
+            onChange={(e) => {
+              const fl = Array.from(e.target.files || []);
+              setFilesModel((s) => ({ ...s, files: fl }));
+            }}
+          />
+          {!!filesModel.files.length && (
+            <ul className={styles.fileList}>
+              {filesModel.files.map((f) => (
+                <li key={f.name}>{f.name}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className={styles.formItemFull}>
+          <label className={styles.label}>Description</label>
+          <textarea
+            className={styles.textarea}
+            rows={3}
+            value={filesModel.description}
+            onChange={(e) => setFilesModel((s) => ({ ...s, description: e.target.value }))}
+            disabled={knowledgeDone}
+            placeholder="Brief description of this knowledge source"
+          />
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
+              checked={filesModel.autoSync}
+              onChange={(e) => setFilesModel((s) => ({ ...s, autoSync: e.target.checked }))}
+              disabled={knowledgeDone}
+            />
+            <span>Enable auto-sync</span>
+          </label>
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.label}>Frequency</label>
+          <select
+            className={styles.select}
+            value={filesModel.frequency}
+            onChange={(e) => setFilesModel((s) => ({ ...s, frequency: e.target.value as any }))}
+            disabled={knowledgeDone}
+          >
+            <option>Daily</option>
+            <option>Weekly</option>
+            <option>Monthly</option>
+          </select>
+        </div>
+
+        <div className={styles.formItem}>
+          <label className={styles.label}>Time</label>
+          <input
+            type="time"
+            className={styles.input}
+            value={filesModel.time}
+            onChange={(e) => setFilesModel((s) => ({ ...s, time: e.target.value }))}
+            disabled={knowledgeDone}
+          />
+        </div>
+      </div>
+
+      <div className={styles.actionsRow}>
+        <div className={styles.leftGroup}>
+          {filesUploading && <Pill>Uploading…</Pill>}
+          {knowledgeDone && <Pill tone="ok">Knowledge saved successfully. You can continue.</Pill>}
+        </div>
+        <div className={styles.rightGroup}>
+          {!knowledgeDone && (
+            <Button onClick={() => onSubmitKnowledge("files")} disabled={knowledgeSubmitting || filesUploading}>
+              {knowledgeSubmitting ? "Submitting..." : "Submit"}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderKnowledge = () => (
+    <div className={styles.pageWrap}>
+      <div className={styles.headerRow}>
+        <h2 className={styles.pageTitle}>Add your team’s knowledge sources</h2>
+        <div className={styles.statusRight}>
+          Step 2 of 4 <span className={styles.dotOnline}>●</span> System online
+        </div>
+      </div>
+
+      {renderStepper(2)}
+
+      {/* Picker boxes */}
+      <div className={styles.sourceGrid}>
+        <div
+          className={`${styles.sourceCard} ${activeKnowledgePane === "confluence" ? styles.sourceActive : ""}`}
+          onClick={() => setActiveKnowledgePane("confluence")}
+        >
+          <div className={styles.sourceIcon}>📄</div>
+          <div className={styles.sourceTitle}>Confluence space</div>
+        </div>
+        <div
+          className={`${styles.sourceCard} ${activeKnowledgePane === "files" ? styles.sourceActive : ""}`}
+          onClick={() => setActiveKnowledgePane("files")}
+        >
+          <div className={styles.sourceIcon}>📁</div>
+          <div className={styles.sourceTitle}>File upload</div>
+        </div>
+        <div className={styles.sourceCardDisabled}>
+          <div className={styles.sourceIcon}>🌐</div>
+          <div className={styles.sourceTitle}>SharePoint</div>
+        </div>
+        <div className={styles.sourceCardDisabled}>
+          <div className={styles.sourceIcon}>☁️</div>
+          <div className={styles.sourceTitle}>OneDrive</div>
+        </div>
+      </div>
+
+      {/* Active config panel */}
+      {activeKnowledgePane === "confluence" ? renderConfluencePanel() : renderFilesPanel()}
+
+      <div className={styles.actionsRow}>
+        {/* Prev is greyed out once submitted */}
+        <Button
+          variant="secondary"
+          disabled={knowledgeDone}
+          onClick={() => setSection("onboard")}
+        >
+          Previous
+        </Button>
+
+        <div className={styles.rightGroup}>
+          <Button
+            variant="primary"
+            disabled={!canContinueFromKnowledge}
+            onClick={() => setSection("dashboard" /* or "processing" if you have it */)}
+          >
+            Continue
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ------------------------------- Router ------------------------------- */
+
+  const content = useMemo(() => {
+    switch (section) {
+      case "onboard":
+        return renderRegistration();
+      case "knowledge":
+        return renderKnowledge();
+      case "dashboard":
+        return <Dashboard teamName={reg.teamName} indexName={`test-${reg.teamName || "team"}`} />;
+      case "auto":
+        return <AutoRefresh />;
+      case "analytics":
+        return <Analytics />;
+      case "settings":
+        return <Settings />;
+      default:
+        return null;
+    }
+  }, [section, reg, activeKnowledgePane, conf, filesModel, regDone, knowledgeDone, regErrors, confErrors, filesErrors, regSubmitting, knowledgeSubmitting, filesUploading]);
+
+  return (
+    <div className={styles.wrap}>
+      {/* Top app header (kept minimal; uses your existing global styles) */}
+      <div className={styles.appHeader}>
+        <div>
+          <div className={styles.appTitle}>COACH Self-Service Portal</div>
+          <div className={styles.appSubtitle}>AI-powered knowledge management platform</div>
+        </div>
+        <div className={styles.headerRight}>
+          <span className={styles.muted}>System online</span>
+          <span className={styles.dotOnline}>●</span>
+        </div>
+      </div>
+
+      {renderTopNav()}
+
+      {content}
+    </div>
   );
 };
 
-export default SelfServicePortal;
-
-
+export default Home;

@@ -605,3 +605,4 @@ cfg.setdefault("report_path", "report.json")
 
 # 3) Run (uses the run_pipeline you already defined in earlier cells)
 run_pipeline(**cfg)
+ 
