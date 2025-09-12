@@ -1833,7 +1833,6 @@
 
 // export default SelfServicePortal;
 
-
 import React, { useMemo, useRef, useState } from 'react';
 import styles from './home.module.scss';
 import { putS3, presignFiles, uploadWithPresigned } from '@/utils/s3';
@@ -1855,62 +1854,77 @@ const TOTAL_STEPS = 4;
 type IconProps = { size?: number };
 const Icon = {
   Plus: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   ),
   ChartBars: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M4 19h16M7 17V9M12 17V5M17 17v-6"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 17V9M12 17V5M17 17v-6"/></svg>
   ),
   Database: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zm16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3m16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3V7"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zm16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3m16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3V7"/></svg>
   ),
   Calendar: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
   ),
   TrendUp: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-7M15 8h5v5"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7M15 8h5v5"/></svg>
   ),
   Cog: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/>
       <path d="M12 2v3M12 19v3M4.6 5.6l2.1 2.1M17.3 18.3l2.1 2.1M2 12h3M19 12h3M4.6 18.4l2.1-2.1M17.3 5.7l2.1-2.1"/>
     </svg>
   ),
   File: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>
     </svg>
   ),
   Upload: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 16V6"/><path d="M8 10l4-4 4 4"/><path d="M5 20h14"/>
     </svg>
   ),
   Globe: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M2.5 12h19"/><path d="M12 2.5c3 3.5 3 15.5 0 19"/><path d="M12 2.5c-3 3.5-3 15.5 0 19"/>
     </svg>
   ),
   Cloud: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M20 17a4 4 0 0 0-3.5-3.96A5 5 0 0 0 7 12a4 4 0 0 0-1 7.87h12A4 4 0 0 0 20 17z"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M20 17a4 4 0 0 0-3.5-3.96A5 5 0 0 0 7 12a4 4 0 0 0-1 7.87h12A4 4 0 0 0 20 17z"/></svg>
   ),
   Confluence: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M6 4h9l3 3v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M15 4v4h4"/><path d="M8 11h8M8 15h8"/>
     </svg>
   ),
   Check: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
       <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
-  Sun: ({ size = 16 }: IconProps) => (
+  Bolt: ({ size = 14 }: IconProps) => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
+      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/>
+    </svg>
+  ),
+  Spark: ({ size = 14 }: IconProps) => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
+      <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill="currentColor"/>
+    </svg>
+  ),
+  Key: ({ size = 16 }: IconProps) => (
     <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2 12h3M19 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" stroke="currentColor" fill="none"/>
+      <path d="M21 7a5 5 0 1 1-9.8 1H3v4h5v4h4v-4h1.2A5 5 0 0 1 21 7z" fill="currentColor"/>
     </svg>
   ),
   Moon: ({ size = 16 }: IconProps) => (
     <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
       <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" fill="currentColor"/>
+    </svg>
+  ),
+  Sun: ({ size = 16 }: IconProps) => (
+    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
+      <circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2 12h3M19 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" stroke="currentColor" fill="none"/>
     </svg>
   ),
 };
@@ -1937,51 +1951,18 @@ const Stepper: React.FC<{ active: number; total: number }> = ({ active, total })
 };
 
 /* =========================== Helpers ============================ */
-const Card: React.FC<{ children: React.ReactNode; pad?: number; style?: React.CSSProperties }> = ({ children, pad = 28, style }) => (
-  <div className={styles.card} style={{ padding: pad, ...style }}>{children}</div>
-);
 const Title: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: '#111827' }}>{children}</div>
+  <div style={{ fontWeight: 600, fontSize: 16, margin: '2px 0 12px' }}>{children}</div>
 );
-const Muted: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <span style={{ color: 'var(--muted)', fontSize: 12 }}>{children}</span>
+const Card: React.FC<{ children: React.ReactNode; pad?: number; style?: React.CSSProperties }> = ({ children, pad = 18, style }) => (
+  <div className={styles.card} style={{ padding: pad, borderRadius: 12, width: '100%', boxSizing: 'border-box', overflow: 'hidden', ...style }}>{children}</div>
 );
-const Badge: React.FC<{ tone?: 'ok'|'warn'; children?: React.ReactNode }> = ({ tone='ok', children }) => {
-  const style: React.CSSProperties = tone === 'ok'
-    ? { background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#14532d' }
-    : { background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412' };
-  return <span style={{ ...style, padding: '2px 8px', borderRadius: 999, fontSize: 12, display: 'inline-block' }}>{children}</span>;
-};
-
-/* tiny viz helpers */
-function bar(label: string, pct: number, color = 'var(--primary)') {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-        <span>{label}</span><Muted>{pct}%</Muted>
-      </div>
-      <div style={{ height: 8, background: '#e5e7eb', borderRadius: 999 }}>
-        <div style={{ width: `${pct}%`, height: 8, background: color, borderRadius: 999 }} />
-      </div>
-    </div>
-  );
-}
-function ring(pct: number, color = '#2563eb') {
-  const size = 120, stroke = 10, r = (size - stroke) / 2, c = 2 * Math.PI * r, dash = (pct / 100) * c;
-  return (
-    <div style={{ display: 'grid', placeItems: 'center', height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size/2} cy={size/2} r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none"/>
-        <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth={stroke} fill="none" strokeDasharray={`${dash} ${c-dash}`} strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} />
-        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontSize="22" fontWeight="700">{pct}%</text>
-      </svg>
-    </div>
-  );
-}
-function nextRunPreview(time: string) {
-  const now = new Date(); const d = new Date(now); d.setDate(now.getDate() + 1);
-  return `${d.toISOString().slice(0,10)} ${time}`;
-}
+const Toolbar: React.FC<{ left?: React.ReactNode; right?: React.ReactNode }> = ({ left, right }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+    <div>{left}</div>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{right}</div>
+  </div>
+);
 
 /* ========================== Component =========================== */
 const SelfServicePortal: React.FC = () => {
@@ -2028,9 +2009,13 @@ const SelfServicePortal: React.FC = () => {
   const onFilePick: React.ChangeEventHandler<HTMLInputElement> = (e) => { const f = Array.from(e.target.files || []); if (!step2Saved && f.length) setFileUpload(p => ({ ...p, files: [...p.files, ...f] })); };
   const removeFile = (i: number) => { if (step2Saved) return; setFileUpload(p => ({ ...p, files: p.files.filter((_, idx) => idx !== i) })); };
 
-  /* -------- Step-3/4 display -------- */
+  /* -------- Step-3/4 (unchanged) -------- */
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState(false);
+  const [testQuestions, setTestQuestions] = useState<string[]>(['']);
+  const [testing, setTesting] = useState(false);
+  const [deployed, setDeployed] = useState(false);
+  const [deployToCrewMate, setDeployToCrewMate] = useState(true);
   const chunksCreated = 800 + sources.length * 200 + fileUpload.files.length * 15;
   const qualityScore = 98;
 
@@ -2057,7 +2042,7 @@ const SelfServicePortal: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /* ================= Step-1: register -> S3 ================= */
+  /* ================= Step-1: Register -> S3 ================= */
   async function submitTeamRegistration() {
     setSaveErr1(null);
     if (!isStep1Valid) {
@@ -2077,7 +2062,7 @@ const SelfServicePortal: React.FC = () => {
     }
   }
 
-  /* ================= Step-2: save sources (both panels) ================= */
+  /* ================= Step-2: Save sources (from either panel) ================= */
   async function submitStep2Only() {
     setSaveErr2(null);
     setSavingStep2(true);
@@ -2086,7 +2071,7 @@ const SelfServicePortal: React.FC = () => {
 
     try {
       if (files.length > 0) {
-        const st: Record<string, 'idle'|'uploading'|'done'|'error'> = {};
+        const st: Record<string, 'idle' | 'uploading' | 'done' | 'error'> = {};
         files.forEach((f) => (st[f.name] = 'idle'));
         setUploadStatuses(st);
 
@@ -2125,17 +2110,19 @@ const SelfServicePortal: React.FC = () => {
     }
   }
 
-  /* ==================== Knowledge tab (static) ==================== */
-  const KnowledgeTab = (
+  /* ==================== Static views (Knowledge tab) ==================== */
+  const KnowledgeSourcesView = (
     <div className={styles.cardWrap}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <h2 className={styles.cardTitle} style={{ margin: 0 }}>Knowledge sources</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className={styles.btn} style={{ background: 'var(--success)', color: '#fff' }}>⟳ Sync all</button>
-          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { setSection('onboard'); setActiveStep(2); }}>+ Add source</button>
-        </div>
-      </div>
-      <Card>
+      <Toolbar
+        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Knowledge sources</h2>}
+        right={
+          <>
+            <button type="button" className={styles.btn} style={{ background: 'var(--success)', color: '#fff' }}>⟳ Sync all</button>
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { setSection('onboard'); setActiveStep(2); }}>+ Add source</button>
+          </>
+        }
+      />
+      <Card pad={22}>
         <div className={styles.emptyState} style={{ paddingTop: 30, paddingBottom: 18 }}>
           <div className={styles.emptyIcon}><Icon.Database size={28} /></div>
           <p className={styles.emptyText} style={{ marginBottom: 6 }}>No knowledge sources configured yet.</p>
@@ -2147,73 +2134,85 @@ const SelfServicePortal: React.FC = () => {
     </div>
   );
 
-  /* ==================== Dashboard tab ==================== */
-  const DashboardTab = (
+  /* ==================== Dashboard (tab) ==================== */
+  const kpiNumber: React.CSSProperties = { fontSize: 28, fontWeight: 700 };
+  const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 };
+  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 };
+  const muted: React.CSSProperties = { color: 'var(--muted)' };
+
+  const DashboardView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className={styles.cardTitle} style={{ margin: 0 }}>Dashboard</h2>
-        <Muted>Last updated just now</Muted>
+      <Toolbar
+        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Dashboard</h2>}
+        right={<span style={muted}>Last updated just now</span>}
+      />
+      <div style={grid4}>
+        <Card><Title>Total queries</Title><div style={kpiNumber}>1,247</div><div style={{...muted, fontSize:12}}>↑ 12% from last week</div></Card>
+        <Card><Title>Avg response time</Title><div style={kpiNumber}>0.8s</div><div style={{...muted, fontSize:12}}>↓ 0.2s from last week</div></Card>
+        <Card><Title>Satisfaction rate</Title><div style={kpiNumber}>94%</div><div style={{...muted, fontSize:12}}>↑ 3% from last week</div></Card>
+        <Card><Title>Knowledge gaps</Title><div style={kpiNumber}>12</div><div style={{ fontSize:12, color:'#9a3412'}}>Needs attention</div></Card>
       </div>
-
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12 }}>
-        <Card><Title>Total queries</Title><div style={{ fontSize: 28, fontWeight: 700 }}>1,247</div><div style={{ color: '#166534', fontSize: 12 }}>↑ 12% from last week</div></Card>
-        <Card><Title>Avg response time</Title><div style={{ fontSize: 28, fontWeight: 700 }}>0.8s</div><div style={{ color: '#991b1b', fontSize: 12 }}>↓ 0.2s from last week</div></Card>
-        <Card><Title>Satisfaction rate</Title><div style={{ fontSize: 28, fontWeight: 700 }}>94%</div><div style={{ color: '#166534', fontSize: 12 }}>↑ 3% from last week</div></Card>
-        <Card><Title>Knowledge gaps</Title><div style={{ fontSize: 28, fontWeight: 700 }}>12</div><Badge tone="warn">Needs attention</Badge></Card>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={grid2}>
         <Card>
           <Title>Recent activity</Title>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-            <li><Badge/><span style={{ marginLeft: 8 }}>How to configure MFA?</span><span style={{ float: 'right' }}><Muted>2 mins ago</Muted></span></li>
-            <li><Badge/><span style={{ marginLeft: 8 }}>Confluence space updated</span><span style={{ float: 'right' }}><Muted>1 hour ago</Muted></span></li>
-            <li><Badge/><span style={{ marginLeft: 8 }}>Feedback: “Very helpful response”</span><span style={{ float: 'right' }}><Muted>3 hours ago</Muted></span></li>
+          <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
+            {savedStep1 && <li><span style={{fontWeight:600}}>Onboard</span> — Team “{form.teamName || '—'}” registered</li>}
+            {step2Saved && <li><span style={{fontWeight:600}}>Sources</span> — Knowledge sources saved</li>}
+            {processed && <li><span style={{fontWeight:600}}>Process</span> — Ingestion completed</li>}
+            {!savedStep1 && !step2Saved && !processed && <li style={muted}>No recent activity yet.</li>}
           </ul>
         </Card>
         <Card>
-          <Title>Popular topics</Title>
-          {bar('Access management', 68)}
-          {bar('Policy configuration', 70)}
-          {bar('Network rules', 46)}
-          {bar('Incident runbook', 33)}
+          <Title>Quality score</Title>
+          <div style={{height:12, background:'#eef2ff', borderRadius:999, overflow:'hidden'}}>
+            <div style={{height:'100%', width:`${qualityScore}%`, background:'var(--primary)'}}/>
+          </div>
+          <div style={{...muted, marginTop: 8}}>{qualityScore}%</div>
         </Card>
       </div>
+      <Card>
+        <Title>Popular topics</Title>
+        <div style={{display:'grid', gap:8}}>
+          {['Access management','Policy configuration','Incident response','SLA updates'].map((label, i)=>(
+            <div key={label}>
+              <div style={{display:'flex', justifyContent:'space-between', fontSize:13}}><span>{label}</span><span style={muted}>{[68,70,42,35][i]}%</span></div>
+              <div style={{height:8, background:'#f3f4f6', borderRadius:999, overflow:'hidden'}}><div style={{width:`${[68,70,42,35][i]}%`, height:'100%', background:'var(--primary)'}}/></div>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 
-  /* ==================== Auto-refresh tab ==================== */
-  const AutoRefreshTab = (
+  /* ==================== Auto-refresh (tab) ==================== */
+  const AutoRefreshView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 className={styles.cardTitle} style={{ margin: 0 }}>Auto-refresh scheduler</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Badge>Auto-refresh enabled</Badge>
-          <button className={`${styles.btn} ${styles.btnGhost}`}>Disable all</button>
-        </div>
-      </div>
-
+      <Toolbar
+        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Auto-refresh scheduler</h2>}
+        right={<><span style={{color:'#16a34a', fontWeight:600}}>● Auto-refresh enabled</span><button className={`${styles.btn} ${styles.btnGhost}`}>Disable all</button></> }
+      />
       <Card>
         <Title>Global refresh settings</Title>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div className={styles.formGrid} style={{gridTemplateColumns:'repeat(4,minmax(0,1fr))'}}>
           <div>
             <label className={styles.label}>Timezone</label>
             <select className={styles.select} defaultValue="America/New_York">
-              <option>America/New_York</option><option>UTC</option><option>Europe/London</option><option>Asia/Kolkata</option>
+              <option>America/New_York</option>
+              <option>UTC</option>
+              <option>Europe/London</option>
             </select>
           </div>
           <div>
-            <label className={styles.label}>Maintenance window</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input className={styles.timeInput} type="time" defaultValue="02:00" />
-              <span style={{ alignSelf: 'center', color: 'var(--muted)' }}>to</span>
-              <input className={styles.timeInput} type="time" defaultValue="04:00" />
-            </div>
+            <label className={styles.label}>Maintenance window (from)</label>
+            <input className={styles.timeInput} type="time" defaultValue="02:00" />
+          </div>
+          <div>
+            <label className={styles.label}>Maintenance window (to)</label>
+            <input className={styles.timeInput} type="time" defaultValue="04:00" />
           </div>
           <div>
             <label className={styles.label}>Retry attempts</label>
-            <input className={styles.input} type="number" defaultValue={3}/>
+            <input className={styles.input} type="number" min={0} defaultValue={3}/>
           </div>
         </div>
       </Card>
@@ -2224,24 +2223,28 @@ const SelfServicePortal: React.FC = () => {
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>Knowledge source</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>Frequency</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>Next run</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>Status</th>
+                <th style={tableTh}>Knowledge source</th>
+                <th style={tableTh}>Frequency</th>
+                <th style={tableTh}>Next run</th>
+                <th style={tableTh}>Status</th>
               </tr>
             </thead>
             <tbody>
+              <tr>
+                <td style={tableTd}>IAM Confluence Space</td>
+                <td style={tableTd}>Daily</td>
+                <td style={tableTd}>2025-08-02 09:00</td>
+                <td style={tableTd}><span style={{color:'#16a34a'}}>● Active</span></td>
+              </tr>
+              <tr>
+                <td style={tableTd}>Security Policies</td>
+                <td style={tableTd}>Weekly</td>
+                <td style={tableTd}>2025-08-03 06:00</td>
+                <td style={tableTd}><span style={{color:'#16a34a'}}>● Active</span></td>
+              </tr>
               {sources.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 10, color: 'var(--muted)' }}>No sources yet. Add sources in Onboard → Step 2.</td></tr>
+                <tr><td colSpan={4} style={{...tableTd, color:'var(--muted)'}}>Add sources in Onboard → Step 2 to populate.</td></tr>
               )}
-              {sources.map((s, i) => (
-                <tr key={`${s}-${i}`}>
-                  <td style={{ padding: '10px' }}>{s === 'Confluence' ? (confluence.name || 'IAM Confluence Space') : (fileUpload.name || 'Security Policies')}</td>
-                  <td style={{ padding: '10px' }}>{s === 'Confluence' ? confluence.frequency : fileUpload.frequency}</td>
-                  <td style={{ padding: '10px' }}>{nextRunPreview(s === 'Confluence' ? confluence.time : fileUpload.time)}</td>
-                  <td style={{ padding: '10px' }}><Badge>Active</Badge></td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>
@@ -2249,32 +2252,60 @@ const SelfServicePortal: React.FC = () => {
     </div>
   );
 
-  /* ==================== Analytics tab ==================== */
-  const AnalyticsTab = (
+  /* ==================== Analytics (tab) ==================== */
+  const AnalyticsView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
-      <h2 className={styles.cardTitle} style={{ margin: 0 }}>Analytics</h2>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Card><Title>Total queries (7d)</Title><div style={{ fontSize: 28, fontWeight: 700 }}>1,904</div><div style={{ fontSize: 12, color: '#166534' }}>↑ 14% vs last week</div></Card>
-        <Card><Title>Average response time</Title><div style={{ fontSize: 28, fontWeight: 700 }}>0.80s</div><div style={{ fontSize: 12, color: '#991b1b' }}>↓ 0.25s vs last week</div></Card>
+      <Toolbar left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Analytics</h2>} />
+      <div style={grid2}>
+        <Card>
+          <Title>Total queries (7d)</Title>
+          <div style={{fontSize:28, fontWeight:700}}>1,904</div>
+          <div style={{...muted, fontSize:12}}>↑ 14% vs last week</div>
+        </Card>
+        <Card>
+          <Title>Average response time</Title>
+          <div style={{fontSize:28, fontWeight:700}}>0.80s</div>
+          <div style={{...muted, fontSize:12}}>↓ 0.25s vs last week</div>
+        </Card>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Card><Title>Satisfaction</Title>{ring(95, '#2563eb')}</Card>
-        <Card><Title>Deflection rate</Title>{ring(62, '#10b981')}</Card>
+      <div style={grid2}>
+        <Card>
+          <Title>Satisfaction</Title>
+          <div style={{display:'flex', alignItems:'center', gap:12}}>
+            <div style={{width:80, height:80, borderRadius:'50%', border:'8px solid #e5e7eb', position:'relative'}}>
+              <div style={{position:'absolute', inset:8, borderRadius:'50%', background:'conic-gradient(var(--primary) 0% 95%, #e5e7eb 95% 100%)'}}/>
+            </div>
+            <div style={{fontSize:22, fontWeight:700}}>95%</div>
+          </div>
+        </Card>
+        <Card>
+          <Title>Deflection rate</Title>
+          <div style={{display:'flex', alignItems:'center', gap:12}}>
+            <div style={{width:80, height:80, borderRadius:'50%', border:'8px solid #e5e7eb', position:'relative'}}>
+              <div style={{position:'absolute', inset:8, borderRadius:'50%', background:'conic-gradient(var(--primary) 0% 62%, #e5e7eb 62% 100%)'}}/>
+            </div>
+            <div style={{fontSize:22, fontWeight:700}}>62%</div>
+          </div>
+        </Card>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={grid2}>
         <Card>
           <Title>Channel breakdown</Title>
-          {bar('Portal', 48)}
-          {bar('Slack', 32, '#0ea5e9')}
-          {bar('Email', 14, '#8b5cf6')}
-          {bar('Other', 6, '#f97316')}
+          {[
+            ['Portal', 48],
+            ['Slack', 32],
+            ['Email', 14],
+            ['Other', 6],
+          ].map(([label, pct]) => (
+            <div key={label as string} style={{ marginBottom: 10 }}>
+              <div style={{display:'flex', justifyContent:'space-between', fontSize:13}}><span>{label as string}</span><span style={muted}>{pct as number}%</span></div>
+              <div style={{height:8, background:'#f3f4f6', borderRadius:999, overflow:'hidden'}}><div style={{width:`${pct}%`, height:'100%', background:'var(--primary)'}}/></div>
+            </div>
+          ))}
         </Card>
         <Card>
           <Title>Top teams by usage</Title>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+          <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
             <li>Support — 640 queries</li>
             <li>Engineering — 520 queries</li>
             <li>Sales — 310 queries</li>
@@ -2282,60 +2313,115 @@ const SelfServicePortal: React.FC = () => {
           </ul>
         </Card>
       </div>
+      <Card>
+        <Title>Embedding store</Title>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}>
+          <div style={{padding:'6px 0'}}>Total vectors</div>
+          <div style={{padding:'6px 0', textAlign:'right', fontWeight:700}}>{processed ? (chunksCreated * 1).toLocaleString() : 0}</div>
+          <div style={{padding:'6px 0'}}>Namespaces</div>
+          <div style={{padding:'6px 0', textAlign:'right', fontWeight:700}}>{savedStep1 ? 1 : 0}</div>
+        </div>
+      </Card>
     </div>
   );
 
-  /* ==================== Settings tab ==================== */
+  /* ==================== Settings (tab) ==================== */
   const [dark, setDark] = useState(false);
-  const SettingsTab = (
-    <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
-      <h2 className={styles.cardTitle} style={{ margin: 0 }}>Settings</h2>
 
+  // table styles (fix for previous thTd issue)
+  const tableTh: React.CSSProperties = {
+    textAlign: 'left',
+    padding: '8px 10px',
+    borderBottom: '1px solid var(--line)',
+    fontWeight: 600,
+    fontSize: 13,
+    color: '#374151',
+  };
+  const tableTd: React.CSSProperties = {
+    padding: '10px',
+    borderBottom: '1px solid var(--line)',
+  };
+
+  function memberRow(name: string, email: string, role: 'Admin'|'Editor'|'Viewer' = 'Admin') {
+    return (
+      <tr key={email}>
+        <td style={tableTd}>{name}</td>
+        <td style={{ ...tableTd, color: 'var(--muted)' }}>{email}</td>
+        <td style={tableTd}>
+          <select className={styles.select} defaultValue={role}>
+            <option>Admin</option>
+            <option>Editor</option>
+            <option>Viewer</option>
+          </select>
+        </td>
+        <td style={tableTd}>
+          <span style={{
+            background: '#ecfdf5',
+            border: '1px solid #bbf7d0',
+            color: '#14532d',
+            padding: '2px 8px',
+            borderRadius: 999,
+            fontSize: 12
+          }}>
+            Active
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
+  const SettingsView = (
+    <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
+      <Toolbar left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Settings</h2>} />
       <Card>
         <Title>Organization</Title>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label className={styles.label}>Organization name</label><input className={styles.input} defaultValue="Vg Corp" /></div>
-          <div><label className={styles.label}>Logo URL (optional)</label><input className={styles.input} placeholder="https://…"/></div>
+        <div className={styles.formGrid} style={{gridTemplateColumns:'2fr 1fr', gap:12}}>
+          <div>
+            <label className={styles.label}>Organization name</label>
+            <input className={styles.input} defaultValue="Vg Corp"/>
+          </div>
+          <div>
+            <label className={styles.label}>Logo URL (optional)</label>
+            <input className={styles.input} placeholder="https://…"/>
+          </div>
         </div>
       </Card>
-
       <Card>
         <Title>Preferences</Title>
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr auto', gap: 12, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className={styles.formGrid} style={{gridTemplateColumns:'auto auto 1fr auto', alignItems:'center', gap:12}}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className={styles.btn} onClick={() => setDark(false)} aria-pressed={!dark}><Icon.Sun/> Light</button>
             <button className={styles.btn} onClick={() => setDark(true)} aria-pressed={dark}><Icon.Moon/> Dark</button>
           </div>
-          <div>
-            <label className={styles.label}>Default timezone</label>
-            <select className={styles.select} defaultValue="America/New_York">
-              <option>America/New_York</option><option>UTC</option><option>Europe/London</option><option>Asia/Kolkata</option>
-            </select>
-          </div>
-          <div/>
-          <div>
-            <label className={styles.label}>Data retention (days)</label>
-            <input className={styles.input} type="number" defaultValue={365}/>
-          </div>
+          <select className={styles.select} defaultValue="America/New_York">
+            <option>America/New_York</option>
+            <option>UTC</option>
+          </select>
+          <div />
+          <input className={styles.input} type="number" defaultValue={365}/>
         </div>
       </Card>
-
       <Card>
         <Title>API access</Title>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input className={styles.input} readOnly value="••••••••••••••••••••••••••••••" style={{ flex: 1 }}/>
-          <button className={styles.btn}>Reveal</button>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <div style={{ flex: 1 }}>
+            <label className={styles.label}>Primary API key</label>
+            <input className={styles.input} defaultValue="••••••••••••••••••••••••••••" readOnly />
+          </div>
+          <button className={`${styles.btn} ${styles.btnGhost}`}><Icon.Key/> Reveal</button>
           <button className={`${styles.btn} ${styles.btnPrimary}`}>Rotate key</button>
         </div>
       </Card>
-
       <Card>
         <Title>Members & access</Title>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={thTd}>Name</th><th style={thTd}>Email</th><th style={thTd}>Role</th><th style={thTd}>Status</th>
+                <th style={tableTh}>Name</th>
+                <th style={tableTh}>Email</th>
+                <th style={tableTh}>Role</th>
+                <th style={tableTh}>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -2348,22 +2434,6 @@ const SelfServicePortal: React.FC = () => {
       </Card>
     </div>
   );
-  function memberRow(name: string, email: string, role: 'Admin'|'Editor'|'Viewer' = 'Admin') {
-    return (
-      <tr key={email}>
-        <td style={td}> {name} </td>
-        <td style={{ ...td, color: 'var(--muted)' }}>{email}</td>
-        <td style={td}>
-          <select className={styles.select} defaultValue={role}>
-            <option>Admin</option><option>Editor</option><option>Viewer</option>
-          </select>
-        </td>
-        <td style={td}><Badge>Active</Badge></td>
-      </tr>
-    );
-  }
-  const thTd: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--line)', fontWeight: 600, fontSize: 13, color: '#374151' };
-  const td: React.CSSProperties = { padding: '10px', borderBottom: '1px solid var(--line)' };
 
   /* -------------------------- Sub-nav ----------------------------- */
   const SubnavLink: React.FC<{ id: Section; icon: React.ReactNode; label: string }> = ({ id, icon, label }) => (
@@ -2372,10 +2442,8 @@ const SelfServicePortal: React.FC = () => {
     </a>
   );
 
-  /* -------------------------- UI constants ----------------------- */
   const big = 26;
   const dropzoneStyle: React.CSSProperties = { border: '2px dashed var(--line-2)', background: '#fff', borderRadius: 8, padding: 18, textAlign: 'center', color: 'var(--muted)', cursor: 'pointer' };
-
   function addSource(kind: string) { setSources(p => (p.includes(kind) ? p : [...p, kind])); setSelectedSource(kind); }
   function removeSource(kind: string) {
     setSources(prev => prev.filter(k => k !== kind));
@@ -2384,7 +2452,6 @@ const SelfServicePortal: React.FC = () => {
     if (kind === 'File Upload') setFileUpload({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
   }
 
-  /* ------------------------------ render ------------------------------ */
   return (
     <>
       {/* App Bar */}
@@ -2422,18 +2489,19 @@ const SelfServicePortal: React.FC = () => {
       {/* Content */}
       <main className={styles.page}>
         <div className={styles.container} style={{ minWidth: 0 }}>
-          {section === 'dashboard' && DashboardTab}
-          {section === 'knowledge' && KnowledgeTab}
-          {section === 'auto' && AutoRefreshTab}
-          {section === 'analytics' && AnalyticsTab}
-          {section === 'settings' && SettingsTab}
+          {/* Tab pages */}
+          {section === 'dashboard' && DashboardView}
+          {section === 'knowledge' && KnowledgeSourcesView}
+          {section === 'auto' && AutoRefreshView}
+          {section === 'analytics' && AnalyticsView}
+          {section === 'settings' && SettingsView}
 
           {section === 'onboard' && (
             <>
               <div className={styles.stepperWrap}><Stepper active={activeStep} total={TOTAL_STEPS} /></div>
               <div className={styles.cardWrap}>
                 <div className={styles.card}>
-                  <h2 className={styles.cardTitle} style={{ fontWeight: 700 }}>
+                  <h2 className={styles.cardTitle} style={{ fontWeight: 600 }}>
                     {activeStep === 1 ? 'Team registration' : activeStep === 2 ? 'Knowledge sources' : activeStep === 3 ? 'Processing knowledge' : 'Test & deploy'}
                   </h2>
                   {activeStep === 2 && <p className={styles.cardSubtext}>Add your team’s knowledge sources to create the AI knowledge base.</p>}
@@ -2529,6 +2597,7 @@ const SelfServicePortal: React.FC = () => {
                               </div>
                             </div>
 
+                            {/* Submit for Confluence */}
                             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                               <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
                                 {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
@@ -2601,6 +2670,7 @@ const SelfServicePortal: React.FC = () => {
                               </div>
                             </div>
 
+                            {/* Submit for File upload */}
                             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                               <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
                                 {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
@@ -2625,11 +2695,11 @@ const SelfServicePortal: React.FC = () => {
                   {/* Step 3 */}
                   {activeStep === 3 && (
                     <div style={{ display: 'grid', gap: 16 }}>
-                      <div style={{ background: '#eef2ff', color: '#1f2937', borderRadius: 10, padding: '14px 16px' }}>
-                        <strong>Sources to process: </strong>{sources.length > 0 ? sources.join(', ') : 'None selected'}
+                      <div style={{ background: '#eef2ff', color: '#1f2937', borderRadius: 10, padding: '14px 16px' }} aria-live="polite">
+                        <strong style={{ fontWeight: 600 }}>Sources to process: </strong>{sources.length > 0 ? sources.join(', ') : 'None selected'}
                       </div>
                       <div style={{ display: 'grid', placeItems: 'center', paddingTop: 4 }}>
-                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { if (processing) return; setProcessing(true); setProcessed(false); setTimeout(() => { setProcessing(false); setProcessed(true); }, 1600); }} disabled={processing}>
+                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { if (processing) return; setProcessing(true); setProcessed(false); setTimeout(() => { setProcessing(false); setProcessed(true); }, 1600); }} disabled={processing} aria-busy={processing}>
                           {processing ? 'Running…' : 'Start processing'}
                         </button>
                       </div>
@@ -2639,12 +2709,12 @@ const SelfServicePortal: React.FC = () => {
                   {/* Step 4 */}
                   {activeStep === 4 && (
                     <div style={{ display: 'grid', gap: 18 }}>
-                      <div style={{ background: '#e9fbe7', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, color: '#14532d' }}>
+                      <div role="status" aria-live="polite" style={{ background: '#e9fbe7', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, color: '#14532d' }}>
                         <div style={{ fontWeight: 600, marginBottom: 6 }}>Processing complete</div>
                         <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
                           <li>{sources.length} knowledge {sources.length === 1 ? 'source' : 'sources'} processed</li>
-                          <li>{(800 + sources.length * 200 + fileUpload.files.length * 15).toLocaleString()} content chunks created</li>
-                          <li>98% quality score</li>
+                          <li>{chunksCreated.toLocaleString()} content chunks created</li>
+                          <li>{qualityScore}% quality score</li>
                           <li>Ready for deployment</li>
                         </ul>
                       </div>
@@ -2653,7 +2723,14 @@ const SelfServicePortal: React.FC = () => {
 
                   {/* Footer */}
                   <div className={styles.formFooter}>
-                    <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={goPrev} disabled={activeStep === 1 || processing || (activeStep === 2 && step2Saved)}>Previous</button>
+                    <button
+                      type="button"
+                      className={`${styles.btn} ${styles.btnGhost}`}
+                      onClick={goPrev}
+                      disabled={activeStep === 1 || processing || (activeStep === 2 && step2Saved)}
+                    >
+                      Previous
+                    </button>
                     <button
                       type="button"
                       className={`${styles.btn} ${styles.btnPrimary}`}
@@ -2661,7 +2738,9 @@ const SelfServicePortal: React.FC = () => {
                         if (activeStep === 2) {
                           if (step2Saved) goNext();
                           else submitStep2Only().then(() => step2Saved && goNext());
-                        } else { goNext(); }
+                        } else {
+                          goNext();
+                        }
                       }}
                       disabled={!canContinue}
                     >
@@ -2679,4 +2758,5 @@ const SelfServicePortal: React.FC = () => {
 };
 
 export default SelfServicePortal;
+
 
