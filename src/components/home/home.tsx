@@ -1837,7 +1837,9 @@ import React, { useMemo, useRef, useState } from 'react';
 import styles from './home.module.scss';
 import { putS3, presignFiles, uploadWithPresigned } from '@/utils/s3';
 
-/* ======================= Types & constants ======================= */
+/* =========================================================
+   Types & constants
+   ========================================================= */
 type FormModel = {
   teamName: string;
   department: string;
@@ -1850,86 +1852,112 @@ type Section = 'onboard' | 'dashboard' | 'knowledge' | 'auto' | 'analytics' | 's
 const DOMAINS = ['Select domain', 'Support', 'Engineering', 'Sales', 'HR', 'Finance'];
 const TOTAL_STEPS = 4;
 
-/* ============================ Icons ============================= */
+/* =========================================================
+   Reusable inline styles (so we don’t depend on extra CSS)
+   ========================================================= */
+const tableTh: React.CSSProperties = {
+  textAlign: 'left',
+  fontSize: 12,
+  color: '#6b7280',
+  fontWeight: 600,
+  padding: '12px 14px',
+  borderBottom: '1px solid #e5e7eb',
+  whiteSpace: 'nowrap',
+};
+const tableTd: React.CSSProperties = {
+  padding: '14px',
+  borderBottom: '1px solid #f3f4f6',
+  fontSize: 14,
+  color: '#111827',
+};
+const pill: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 8px',
+  fontSize: 12,
+  borderRadius: 999,
+  background: '#eef2ff',
+  color: '#1f2937',
+  border: '1px solid #e5e7eb',
+};
+const deltaUp: React.CSSProperties = { color: '#059669', fontSize: 12 };
+const deltaDown: React.CSSProperties = { color: '#b91c1c', fontSize: 12 };
+const softCard: React.CSSProperties = {
+  border: '1px solid #e5e7eb',
+  boxShadow: '0 1px 0 rgba(17,24,39,0.02)',
+  borderRadius: 12,
+  background: '#fff',
+  padding: 18,
+};
+
+/* =========================================================
+   Tiny icon set (stroke = currentColor)
+   ========================================================= */
 type IconProps = { size?: number };
 const Icon = {
   Plus: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
   ),
   ChartBars: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 17V9M12 17V5M17 17v-6"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M4 19h16M7 17V9M12 17V5M17 17v-6"/></svg>
   ),
   Database: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zm16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3m16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3V7"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zm16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3m16 5c0 1.7-3.6 3-8 3s-8-1.3-8-3V7"/></svg>
   ),
   Calendar: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
   ),
   TrendUp: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7M15 8h5v5"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-7M15 8h5v5"/></svg>
   ),
   Cog: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
       <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/>
       <path d="M12 2v3M12 19v3M4.6 5.6l2.1 2.1M17.3 18.3l2.1 2.1M2 12h3M19 12h3M4.6 18.4l2.1-2.1M17.3 5.7l2.1-2.1"/>
     </svg>
   ),
   File: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>
-    </svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
   ),
   Upload: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 16V6"/><path d="M8 10l4-4 4 4"/><path d="M5 20h14"/>
-    </svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M12 16V6"/><path d="M8 10l4-4 4 4"/><path d="M5 20h14"/></svg>
   ),
   Globe: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24">
       <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M2.5 12h19"/><path d="M12 2.5c3 3.5 3 15.5 0 19"/><path d="M12 2.5c-3 3.5-3 15.5 0 19"/>
     </svg>
   ),
   Cloud: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true"><path d="M20 17a4 4 0 0 0-3.5-3.96A5 5 0 0 0 7 12a4 4 0 0 0-1 7.87h12A4 4 0 0 0 20 17z"/></svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M20 17a4 4 0 0 0-3.5-3.96A5 5 0 0 0 7 12a4 4 0 0 0-1 7.87h12A4 4 0 0 0 20 17z"/></svg>
   ),
   Confluence: ({ size = 18 }: IconProps) => (
-    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 4h9l3 3v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M15 4v4h4"/><path d="M8 11h8M8 15h8"/>
-    </svg>
+    <svg className={styles.icon} style={{ width: size, height: size }} viewBox="0 0 24 24"><path d="M6 4h9l3 3v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M15 4v4h4"/><path d="M8 11h8M8 15h8"/></svg>
   ),
   Check: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  ),
-  Bolt: ({ size = 14 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/>
-    </svg>
-  ),
-  Spark: ({ size = 14 }: IconProps) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: size, height: size }}>
-      <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill="currentColor"/>
-    </svg>
-  ),
-  Key: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <path d="M21 7a5 5 0 1 1-9.8 1H3v4h5v4h4v-4h1.2A5 5 0 0 1 21 7z" fill="currentColor"/>
-    </svg>
-  ),
-  Moon: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" fill="currentColor"/>
-    </svg>
-  ),
-  Sun: ({ size = 16 }: IconProps) => (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}>
-      <circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2 12h3M19 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" stroke="currentColor" fill="none"/>
-    </svg>
+    <svg viewBox="0 0 24 24" style={{ width: size, height: size }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
   ),
 };
 
-/* =========================== Stepper ============================ */
+/* =========================================================
+   Common UI helpers
+   ========================================================= */
+const Title: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div style={{ fontWeight: 600, fontSize: 16, margin: '2px 0 12px' }}>{children}</div>
+);
+const Card: React.FC<{ children: React.ReactNode; pad?: number; style?: React.CSSProperties }> = ({ children, pad = 18, style }) => (
+  <div className={styles.card} style={{ padding: pad, borderRadius: 12, width: '100%', boxSizing: 'border-box', overflow: 'hidden', ...style }}>{children}</div>
+);
+const Toolbar: React.FC<{ left?: React.ReactNode; right?: React.ReactNode }> = ({ left, right }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+    <div>{left}</div>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--muted)' }}>{right}</div>
+  </div>
+);
+
+/* =========================================================
+   Stepper (unchanged)
+   ========================================================= */
 const Stepper: React.FC<{ active: number; total: number }> = ({ active, total }) => {
   const steps = Array.from({ length: total }, (_, i) => i + 1);
   return (
@@ -1950,26 +1978,14 @@ const Stepper: React.FC<{ active: number; total: number }> = ({ active, total })
   );
 };
 
-/* =========================== Helpers ============================ */
-const Title: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div style={{ fontWeight: 600, fontSize: 16, margin: '2px 0 12px' }}>{children}</div>
-);
-const Card: React.FC<{ children: React.ReactNode; pad?: number; style?: React.CSSProperties }> = ({ children, pad = 18, style }) => (
-  <div className={styles.card} style={{ padding: pad, borderRadius: 12, width: '100%', boxSizing: 'border-box', overflow: 'hidden', ...style }}>{children}</div>
-);
-const Toolbar: React.FC<{ left?: React.ReactNode; right?: React.ReactNode }> = ({ left, right }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-    <div>{left}</div>
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{right}</div>
-  </div>
-);
-
-/* ========================== Component =========================== */
+/* =========================================================
+   Main component
+   ========================================================= */
 const SelfServicePortal: React.FC = () => {
-  const [section, setSection] = useState<Section>('onboard');
+  const [section, setSection] = useState<Section>('dashboard'); // default to Dashboard per screenshots
   const [activeStep, setActiveStep] = useState<number>(1);
 
-  /* -------- Step-1 state -------- */
+  // -------- Step-1 state --------
   const [form, setForm] = useState<FormModel>({ teamName: '', department: '', domain: '', contactEmail: '', description: '' });
   const [touched, setTouched] = useState<Record<keyof FormModel, boolean>>({ teamName: false, department: false, domain: false, contactEmail: false, description: false });
   const errors = useMemo(() => {
@@ -1987,10 +2003,10 @@ const SelfServicePortal: React.FC = () => {
   const [saveErr1, setSaveErr1] = useState<string | null>(null);
   const step1Locked = savedStep1;
 
-  /* -------- Step-2 state -------- */
+  // -------- Step-2 state --------
   const [sources, setSources] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
-  const [confluence, setConfluence] = useState({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
+  const [confluence, setConfluence] = useState({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Daily', time: '02:00' });
 
   const [fileUpload, setFileUpload] = useState<{
     name: string; description: string; autoRefresh: boolean; frequency: 'Daily'|'Weekly'|'Monthly'; time: string; files: File[];
@@ -2009,17 +2025,16 @@ const SelfServicePortal: React.FC = () => {
   const onFilePick: React.ChangeEventHandler<HTMLInputElement> = (e) => { const f = Array.from(e.target.files || []); if (!step2Saved && f.length) setFileUpload(p => ({ ...p, files: [...p.files, ...f] })); };
   const removeFile = (i: number) => { if (step2Saved) return; setFileUpload(p => ({ ...p, files: p.files.filter((_, idx) => idx !== i) })); };
 
-  /* -------- Step-3/4 (unchanged) -------- */
+  // -------- Step-3/4 demo state (unchanged behavior) --------
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState(false);
-  const [testQuestions, setTestQuestions] = useState<string[]>(['']);
-  const [testing, setTesting] = useState(false);
+  const [testQuestions] = useState<string[]>(['']);
+  const [testing] = useState(false);
   const [deployed, setDeployed] = useState(false);
-  const [deployToCrewMate, setDeployToCrewMate] = useState(true);
   const chunksCreated = 800 + sources.length * 200 + fileUpload.files.length * 15;
   const qualityScore = 98;
 
-  /* -------- Navigation gating -------- */
+  // -------- Navigation gating --------
   const canContinue =
     activeStep === 1 ? savedStep1 :
     activeStep === 2 ? step2Saved && !savingStep2 :
@@ -2037,12 +2052,14 @@ const SelfServicePortal: React.FC = () => {
   }
   function goPrev() {
     if (activeStep === 1) return;
-    if (activeStep === 2 && step2Saved) return; // lock back-navigation after Step-2 submit
+    if (activeStep === 2 && step2Saved) return; // lock back-nav after Step-2 submit
     setActiveStep(s => Math.max(1, s - 1));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /* ================= Step-1: Register -> S3 ================= */
+  /* =========================================================
+     Step-1 submit (persist to S3)
+     ========================================================= */
   async function submitTeamRegistration() {
     setSaveErr1(null);
     if (!isStep1Valid) {
@@ -2062,7 +2079,9 @@ const SelfServicePortal: React.FC = () => {
     }
   }
 
-  /* ================= Step-2: Save sources (from either panel) ================= */
+  /* =========================================================
+     Step-2 submit from either Confluence panel or File panel
+     ========================================================= */
   async function submitStep2Only() {
     setSaveErr2(null);
     setSavingStep2(true);
@@ -2071,7 +2090,7 @@ const SelfServicePortal: React.FC = () => {
 
     try {
       if (files.length > 0) {
-        const st: Record<string, 'idle' | 'uploading' | 'done' | 'error'> = {};
+        const st: Record<string, 'idle'|'uploading'|'done'|'error'> = {};
         files.forEach((f) => (st[f.name] = 'idle'));
         setUploadStatuses(st);
 
@@ -2110,23 +2129,24 @@ const SelfServicePortal: React.FC = () => {
     }
   }
 
-  /* ==================== Static views (Knowledge tab) ==================== */
+  /* =========================================================
+     Knowledge sources: static list page (unchanged pattern)
+     ========================================================= */
   const KnowledgeSourcesView = (
     <div className={styles.cardWrap}>
       <Toolbar
         left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Knowledge sources</h2>}
-        right={
-          <>
-            <button type="button" className={styles.btn} style={{ background: 'var(--success)', color: '#fff' }}>⟳ Sync all</button>
-            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => { setSection('onboard'); setActiveStep(2); }}>+ Add source</button>
-          </>
-        }
+        right={<span>Last updated just now</span>}
       />
       <Card pad={22}>
         <div className={styles.emptyState} style={{ paddingTop: 30, paddingBottom: 18 }}>
           <div className={styles.emptyIcon}><Icon.Database size={28} /></div>
           <p className={styles.emptyText} style={{ marginBottom: 6 }}>No knowledge sources configured yet.</p>
-          <button type="button" onClick={() => { setSection('onboard'); setActiveStep(2); }} style={{ appearance: 'none', background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>
+          <button
+            type="button"
+            onClick={() => { setSection('onboard'); setActiveStep(2); }}
+            style={{ appearance: 'none', background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}
+          >
             Add your first knowledge source →
           </button>
         </div>
@@ -2134,66 +2154,121 @@ const SelfServicePortal: React.FC = () => {
     </div>
   );
 
-  /* ==================== Dashboard (tab) ==================== */
-  const kpiNumber: React.CSSProperties = { fontSize: 28, fontWeight: 700 };
-  const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 };
-  const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 };
-  const muted: React.CSSProperties = { color: 'var(--muted)' };
+  /* =========================================================
+     Dashboard view (matches your screenshot layout)
+     ========================================================= */
+  const MetricCard: React.FC<{
+    title: string; value: string; deltaText?: string; deltaUpwards?: boolean; warn?: boolean;
+  }> = ({ title, value, deltaText, deltaUpwards = true, warn }) => (
+    <div style={{ ...softCard }}>
+      <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: '#111827', lineHeight: 1.15 }}>{value}</div>
+      {deltaText && (
+        <div style={deltaUpwards ? deltaUp : deltaDown}>
+          {deltaUpwards ? '↑' : '↓'} {deltaText}
+        </div>
+      )}
+      {warn && (
+        <div style={{ ...pill, marginTop: 10, background: '#fff7ed', borderColor: '#fed7aa', color: '#9a3412' }}>
+          <span style={{ fontWeight: 600 }}>!</span> Needs attention
+        </div>
+      )}
+    </div>
+  );
+
+  const ProgressBar: React.FC<{ value: number }> = ({ value }) => (
+    <div style={{ height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+      <div style={{ width: `${value}%`, height: '100%', background: 'var(--primary)' }} />
+    </div>
+  );
 
   const DashboardView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
       <Toolbar
         left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Dashboard</h2>}
-        right={<span style={muted}>Last updated just now</span>}
+        right={<span>Last updated just now</span>}
       />
-      <div style={grid4}>
-        <Card><Title>Total queries</Title><div style={kpiNumber}>1,247</div><div style={{...muted, fontSize:12}}>↑ 12% from last week</div></Card>
-        <Card><Title>Avg response time</Title><div style={kpiNumber}>0.8s</div><div style={{...muted, fontSize:12}}>↓ 0.2s from last week</div></Card>
-        <Card><Title>Satisfaction rate</Title><div style={kpiNumber}>94%</div><div style={{...muted, fontSize:12}}>↑ 3% from last week</div></Card>
-        <Card><Title>Knowledge gaps</Title><div style={kpiNumber}>12</div><div style={{ fontSize:12, color:'#9a3412'}}>Needs attention</div></Card>
+
+      {/* Metric cards stacked like the screenshot */}
+      <div style={{ display: 'grid', gap: 14 }}>
+        <MetricCard title="Total queries" value="1,247" deltaText="12% from last week" deltaUpwards />
+        <MetricCard title="Avg response time" value="0.8s" deltaText="0.2s from last week" deltaUpwards={false} />
+        <MetricCard title="Satisfaction rate" value="94%" deltaText="3% from last week" deltaUpwards />
+        <MetricCard title="Knowledge gaps" value="12" warn />
       </div>
-      <div style={grid2}>
-        <Card>
-          <Title>Recent activity</Title>
-          <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
-            {savedStep1 && <li><span style={{fontWeight:600}}>Onboard</span> — Team “{form.teamName || '—'}” registered</li>}
-            {step2Saved && <li><span style={{fontWeight:600}}>Sources</span> — Knowledge sources saved</li>}
-            {processed && <li><span style={{fontWeight:600}}>Process</span> — Ingestion completed</li>}
-            {!savedStep1 && !step2Saved && !processed && <li style={muted}>No recent activity yet.</li>}
-          </ul>
-        </Card>
-        <Card>
-          <Title>Quality score</Title>
-          <div style={{height:12, background:'#eef2ff', borderRadius:999, overflow:'hidden'}}>
-            <div style={{height:'100%', width:`${qualityScore}%`, background:'var(--primary)'}}/>
+
+      {/* Recent activity and Quality score */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={softCard}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Recent activity</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {false ? null : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span><span className={styles.statusDot} /> How to configure MFA?</span>
+                  <span style={{ color: '#6b7280', fontSize: 12 }}>2 mins ago</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span><span className={styles.statusDot} /> Confluence space updated</span>
+                  <span style={{ color: '#6b7280', fontSize: 12 }}>1 hour ago</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span><span className={styles.statusDot} /> Feedback: “Very helpful response”</span>
+                  <span style={{ color: '#6b7280', fontSize: 12 }}>3 hours ago</span>
+                </div>
+              </>
+            )}
           </div>
-          <div style={{...muted, marginTop: 8}}>{qualityScore}%</div>
-        </Card>
+        </div>
+
+        <div style={softCard}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Quality score</div>
+          <ProgressBar value={qualityScore} />
+          <div style={{ color: '#6b7280', marginTop: 8, fontSize: 13 }}>{qualityScore}%</div>
+        </div>
       </div>
-      <Card>
-        <Title>Popular topics</Title>
-        <div style={{display:'grid', gap:8}}>
-          {['Access management','Policy configuration','Incident response','SLA updates'].map((label, i)=>(
-            <div key={label}>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:13}}><span>{label}</span><span style={muted}>{[68,70,42,35][i]}%</span></div>
-              <div style={{height:8, background:'#f3f4f6', borderRadius:999, overflow:'hidden'}}><div style={{width:`${[68,70,42,35][i]}%`, height:'100%', background:'var(--primary)'}}/></div>
+
+      {/* Popular topics */}
+      <div style={softCard}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Popular topics</div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {[
+            { name: 'Access management', pct: 68 },
+            { name: 'Policy configuration', pct: 70 },
+            { name: 'Incident response', pct: 42 },
+            { name: 'SLA updates', pct: 35 },
+          ].map((t) => (
+            <div key={t.name} style={{ display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#374151' }}>
+                <span>{t.name}</span><span style={{ color: '#6b7280' }}>{t.pct}%</span>
+              </div>
+              <ProgressBar value={t.pct} />
             </div>
           ))}
         </div>
-      </Card>
+      </div>
     </div>
   );
 
-  /* ==================== Auto-refresh (tab) ==================== */
+  /* =========================================================
+     Auto-refresh view
+     ========================================================= */
   const AutoRefreshView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
       <Toolbar
-        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Auto-refresh scheduler</h2>}
-        right={<><span style={{color:'#16a34a', fontWeight:600}}>● Auto-refresh enabled</span><button className={`${styles.btn} ${styles.btnGhost}`}>Disable all</button></> }
+        left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Auto-refresh</h2>}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span><i className={styles.statusDot} /> Auto-refresh enabled</span>
+            <button className={`${styles.btn}`} style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#7f1d1d' }}>Disable all</button>
+          </div>
+        }
       />
-      <Card>
-        <Title>Global refresh settings</Title>
-        <div className={styles.formGrid} style={{gridTemplateColumns:'repeat(4,minmax(0,1fr))'}}>
+
+      {/* Global settings */}
+      <div style={softCard}>
+        <div style={{ fontWeight: 600, marginBottom: 12 }}>Global refresh settings</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 0.8fr', gap: 12 }}>
           <div>
             <label className={styles.label}>Timezone</label>
             <select className={styles.select} defaultValue="America/New_York">
@@ -2202,23 +2277,26 @@ const SelfServicePortal: React.FC = () => {
               <option>Europe/London</option>
             </select>
           </div>
-          <div>
-            <label className={styles.label}>Maintenance window (from)</label>
-            <input className={styles.timeInput} type="time" defaultValue="02:00" />
-          </div>
-          <div>
-            <label className={styles.label}>Maintenance window (to)</label>
-            <input className={styles.timeInput} type="time" defaultValue="04:00" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label className={styles.label}>Maintenance window</label>
+              <input className={styles.timeInput} defaultValue="02:00" />
+            </div>
+            <div>
+              <label className={styles.label}>&nbsp;</label>
+              <input className={styles.timeInput} defaultValue="04:00" />
+            </div>
           </div>
           <div>
             <label className={styles.label}>Retry attempts</label>
-            <input className={styles.input} type="number" min={0} defaultValue={3}/>
+            <input className={styles.input} defaultValue="3" />
           </div>
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        <Title>Scheduled updates</Title>
+      {/* Scheduled updates */}
+      <div style={softCard}>
+        <div style={{ fontWeight: 600, marginBottom: 12 }}>Scheduled updates</div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
@@ -2230,122 +2308,124 @@ const SelfServicePortal: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td style={tableTd}>IAM Confluence Space</td>
-                <td style={tableTd}>Daily</td>
-                <td style={tableTd}>2025-08-02 09:00</td>
-                <td style={tableTd}><span style={{color:'#16a34a'}}>● Active</span></td>
-              </tr>
-              <tr>
-                <td style={tableTd}>Security Policies</td>
-                <td style={tableTd}>Weekly</td>
-                <td style={tableTd}>2025-08-03 06:00</td>
-                <td style={tableTd}><span style={{color:'#16a34a'}}>● Active</span></td>
-              </tr>
-              {sources.length === 0 && (
-                <tr><td colSpan={4} style={{...tableTd, color:'var(--muted)'}}>Add sources in Onboard → Step 2 to populate.</td></tr>
-              )}
+              {[
+                { name: confluence.name || 'IAM Confluence Space', freq: 'Daily', next: '2025-08-02 09:00', active: true },
+                { name: fileUpload.name || 'Security Policies', freq: 'Weekly', next: '2025-08-03 06:00', active: true },
+              ].map((r) => (
+                <tr key={r.name}>
+                  <td style={tableTd}>{r.name}</td>
+                  <td style={tableTd}><span style={{ ...pill, background: '#f1f5f9' }}>{r.freq}</span></td>
+                  <td style={tableTd}>{r.next}</td>
+                  <td style={tableTd}><i className={styles.statusDot} /> {r.active ? 'Active' : 'Paused'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
     </div>
   );
 
-  /* ==================== Analytics (tab) ==================== */
+  /* =========================================================
+     Analytics view
+     ========================================================= */
+  const Donut: React.FC<{ value: number }> = ({ value }) => {
+    const radius = 34;
+    const stroke = 8;
+    const normalized = 2 * Math.PI * radius;
+    const dash = (value / 100) * normalized;
+    return (
+      <svg width="90" height="90" viewBox="0 0 90 90">
+        <circle cx="45" cy="45" r={radius} stroke="#e5e7eb" strokeWidth={stroke} fill="none"/>
+        <circle
+          cx="45" cy="45" r={radius}
+          stroke="var(--primary)" strokeWidth={stroke} fill="none"
+          strokeDasharray={`${dash} ${normalized - dash}`} strokeLinecap="round"
+          transform="rotate(-90 45 45)"
+        />
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 16, fontWeight: 700, fill: '#111827' }}>{value}%</text>
+      </svg>
+    );
+  };
+
   const AnalyticsView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
       <Toolbar left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Analytics</h2>} />
-      <div style={grid2}>
-        <Card>
-          <Title>Total queries (7d)</Title>
-          <div style={{fontSize:28, fontWeight:700}}>1,904</div>
-          <div style={{...muted, fontSize:12}}>↑ 14% vs last week</div>
-        </Card>
-        <Card>
-          <Title>Average response time</Title>
-          <div style={{fontSize:28, fontWeight:700}}>0.80s</div>
-          <div style={{...muted, fontSize:12}}>↓ 0.25s vs last week</div>
-        </Card>
+
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={softCard}>
+          <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>Total queries (7d)</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>1,904</div>
+          <div style={deltaUp}>↑ 14% vs last week</div>
+        </div>
+        <div style={softCard}>
+          <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>Average response time</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>0.80s</div>
+          <div style={deltaDown}>↓ 0.2s vs last week</div>
+        </div>
       </div>
-      <div style={grid2}>
-        <Card>
-          <Title>Satisfaction</Title>
-          <div style={{display:'flex', alignItems:'center', gap:12}}>
-            <div style={{width:80, height:80, borderRadius:'50%', border:'8px solid #e5e7eb', position:'relative'}}>
-              <div style={{position:'absolute', inset:8, borderRadius:'50%', background:'conic-gradient(var(--primary) 0% 95%, #e5e7eb 95% 100%)'}}/>
-            </div>
-            <div style={{fontSize:22, fontWeight:700}}>95%</div>
-          </div>
-        </Card>
-        <Card>
-          <Title>Deflection rate</Title>
-          <div style={{display:'flex', alignItems:'center', gap:12}}>
-            <div style={{width:80, height:80, borderRadius:'50%', border:'8px solid #e5e7eb', position:'relative'}}>
-              <div style={{position:'absolute', inset:8, borderRadius:'50%', background:'conic-gradient(var(--primary) 0% 62%, #e5e7eb 62% 100%)'}}/>
-            </div>
-            <div style={{fontSize:22, fontWeight:700}}>62%</div>
-          </div>
-        </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ ...softCard, display: 'grid', placeItems: 'center' }}>
+          <div style={{ fontWeight: 600, marginBottom: 6, width: '100%' }}>Satisfaction</div>
+          <Donut value={95} />
+        </div>
+        <div style={{ ...softCard, display: 'grid', placeItems: 'center' }}>
+          <div style={{ fontWeight: 600, marginBottom: 6, width: '100%' }}>Deflection rate</div>
+          <Donut value={62} />
+        </div>
       </div>
-      <div style={grid2}>
-        <Card>
-          <Title>Channel breakdown</Title>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={softCard}>
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>Channel breakdown</div>
           {[
-            ['Portal', 48],
-            ['Slack', 32],
-            ['Email', 14],
-            ['Other', 6],
-          ].map(([label, pct]) => (
-            <div key={label as string} style={{ marginBottom: 10 }}>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:13}}><span>{label as string}</span><span style={muted}>{pct as number}%</span></div>
-              <div style={{height:8, background:'#f3f4f6', borderRadius:999, overflow:'hidden'}}><div style={{width:`${pct}%`, height:'100%', background:'var(--primary)'}}/></div>
+            { name: 'Portal', pct: 48 },
+            { name: 'Slack', pct: 32 },
+            { name: 'Email', pct: 14 },
+            { name: 'Other', pct: 6 },
+          ].map((c) => (
+            <div key={c.name} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#374151', marginBottom: 6 }}>
+                <span>{c.name}</span><span style={{ color: '#6b7280' }}>{c.pct}%</span>
+              </div>
+              <div style={{ height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                <div style={{ width: `${c.pct}%`, height: '100%', background: 'var(--primary)' }} />
+              </div>
             </div>
           ))}
-        </Card>
-        <Card>
-          <Title>Top teams by usage</Title>
-          <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
-            <li>Support — 640 queries</li>
-            <li>Engineering — 520 queries</li>
-            <li>Sales — 310 queries</li>
-            <li>Finance — 214 queries</li>
-          </ul>
-        </Card>
-      </div>
-      <Card>
-        <Title>Embedding store</Title>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}>
-          <div style={{padding:'6px 0'}}>Total vectors</div>
-          <div style={{padding:'6px 0', textAlign:'right', fontWeight:700}}>{processed ? (chunksCreated * 1).toLocaleString() : 0}</div>
-          <div style={{padding:'6px 0'}}>Namespaces</div>
-          <div style={{padding:'6px 0', textAlign:'right', fontWeight:700}}>{savedStep1 ? 1 : 0}</div>
         </div>
-      </Card>
+        <div style={softCard}>
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>Top teams by usage</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              { team: 'Support', q: 640 },
+              { team: 'Engineering', q: 520 },
+              { team: 'Sales', q: 310 },
+              { team: 'Finance', q: 214 },
+            ].map((r) => (
+              <div key={r.team} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                <span>{r.team}</span><span style={{ color: '#6b7280' }}>{r.q} queries</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 
-  /* ==================== Settings (tab) ==================== */
+  /* =========================================================
+     Settings view
+     ========================================================= */
   const [dark, setDark] = useState(false);
+  const [revealKey, setRevealKey] = useState(false);
+  const masked = '•••• •••• •••• •••• •••• ••••';
+  const apiKeyValue = 'sk-live-1234-5678-9012-ABCD';
 
-  // table styles (fix for previous thTd issue)
-  const tableTh: React.CSSProperties = {
-    textAlign: 'left',
-    padding: '8px 10px',
-    borderBottom: '1px solid var(--line)',
-    fontWeight: 600,
-    fontSize: 13,
-    color: '#374151',
-  };
-  const tableTd: React.CSSProperties = {
-    padding: '10px',
-    borderBottom: '1px solid var(--line)',
-  };
-
-  function memberRow(name: string, email: string, role: 'Admin'|'Editor'|'Viewer' = 'Admin') {
+  function memberRow(name: string, email: string, role: 'Admin' | 'Editor' | 'Viewer' = 'Admin') {
     return (
       <tr key={email}>
-        <td style={tableTd}>{name}</td>
+        <td style={{ ...tableTd, color: '#111827' }}>{name}</td>
         <td style={{ ...tableTd, color: 'var(--muted)' }}>{email}</td>
         <td style={tableTd}>
           <select className={styles.select} defaultValue={role}>
@@ -2354,18 +2434,7 @@ const SelfServicePortal: React.FC = () => {
             <option>Viewer</option>
           </select>
         </td>
-        <td style={tableTd}>
-          <span style={{
-            background: '#ecfdf5',
-            border: '1px solid #bbf7d0',
-            color: '#14532d',
-            padding: '2px 8px',
-            borderRadius: 999,
-            fontSize: 12
-          }}>
-            Active
-          </span>
-        </td>
+        <td style={tableTd}><span><i className={styles.statusDot} /> Active</span></td>
       </tr>
     );
   }
@@ -2373,45 +2442,55 @@ const SelfServicePortal: React.FC = () => {
   const SettingsView = (
     <div className={styles.cardWrap} style={{ display: 'grid', gap: 16 }}>
       <Toolbar left={<h2 className={styles.cardTitle} style={{ margin: 0, fontWeight: 600 }}>Settings</h2>} />
+
       <Card>
         <Title>Organization</Title>
-        <div className={styles.formGrid} style={{gridTemplateColumns:'2fr 1fr', gap:12}}>
+        <div className={styles.formGrid} style={{ gridTemplateColumns: '1.2fr 1fr' }}>
           <div>
             <label className={styles.label}>Organization name</label>
-            <input className={styles.input} defaultValue="Vg Corp"/>
+            <input className={styles.input} defaultValue="Vg Corp" />
           </div>
           <div>
             <label className={styles.label}>Logo URL (optional)</label>
-            <input className={styles.input} placeholder="https://…"/>
+            <input className={styles.input} placeholder="https://…" />
           </div>
         </div>
       </Card>
+
       <Card>
         <Title>Preferences</Title>
-        <div className={styles.formGrid} style={{gridTemplateColumns:'auto auto 1fr auto', alignItems:'center', gap:12}}>
+        <div className={styles.formGrid} style={{ gridTemplateColumns: 'auto auto 1fr', alignItems: 'end' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button className={styles.btn} onClick={() => setDark(false)} aria-pressed={!dark}><Icon.Sun/> Light</button>
-            <button className={styles.btn} onClick={() => setDark(true)} aria-pressed={dark}><Icon.Moon/> Dark</button>
+            <button className={styles.btn} style={{ background: !dark ? 'var(--primary)' : '#fff', color: !dark ? '#fff' : '#374151', border: '1px solid var(--line-2)' }} onClick={() => setDark(false)}>Light</button>
+            <button className={styles.btn} style={{ background: dark ? 'var(--primary)' : '#fff', color: dark ? '#fff' : '#374151', border: '1px solid var(--line-2)' }} onClick={() => setDark(true)}>Dark</button>
           </div>
-          <select className={styles.select} defaultValue="America/New_York">
-            <option>America/New_York</option>
-            <option>UTC</option>
-          </select>
-          <div />
-          <input className={styles.input} type="number" defaultValue={365}/>
+          <div>
+            <label className={styles.label}>Default timezone</label>
+            <select className={styles.select} defaultValue="America/New_York">
+              <option>America/New_York</option>
+              <option>UTC</option>
+              <option>Europe/London</option>
+            </select>
+          </div>
+          <div>
+            <label className={styles.label}>Data retention (days)</label>
+            <input className={styles.input} defaultValue="365" />
+          </div>
         </div>
       </Card>
+
       <Card>
         <Title>API access</Title>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          <div style={{ flex: 1 }}>
-            <label className={styles.label}>Primary API key</label>
-            <input className={styles.input} defaultValue="••••••••••••••••••••••••••••" readOnly />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center' }}>
+          <div>
+            <div style={{ marginBottom: 6, color: '#374151', fontSize: 13 }}>Primary API key</div>
+            <input className={styles.input} readOnly value={revealKey ? apiKeyValue : masked} />
           </div>
-          <button className={`${styles.btn} ${styles.btnGhost}`}><Icon.Key/> Reveal</button>
-          <button className={`${styles.btn} ${styles.btnPrimary}`}>Rotate key</button>
+          <button className={styles.btn} onClick={() => setRevealKey(v => !v)}>{revealKey ? 'Hide' : 'Reveal'}</button>
+          <button className={`${styles.btn}`} style={{ background: '#dcfce7', border: '1px solid #bbf7d0', color: '#14532d' }}>Rotate key</button>
         </div>
       </Card>
+
       <Card>
         <Title>Members & access</Title>
         <div style={{ overflowX: 'auto' }}>
@@ -2425,7 +2504,7 @@ const SelfServicePortal: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {memberRow('Nithin', 'nithin@gmail.com')}
+              {memberRow('Nithin', 'nithin@gmail.com', 'Admin')}
               {memberRow('Eric', 'eric@gmail.com', 'Editor')}
               {memberRow('Swaroop', 'swaroop@gmail.com', 'Viewer')}
             </tbody>
@@ -2435,7 +2514,9 @@ const SelfServicePortal: React.FC = () => {
     </div>
   );
 
-  /* -------------------------- Sub-nav ----------------------------- */
+  /* =========================================================
+     Sub-nav
+     ========================================================= */
   const SubnavLink: React.FC<{ id: Section; icon: React.ReactNode; label: string }> = ({ id, icon, label }) => (
     <a href="#" className={`${styles.subnavLink} ${section === id ? styles.subnavLinkActive : ''}`} onClick={(e) => { e.preventDefault(); setSection(id); }}>
       {icon}<span>{label}</span>
@@ -2448,10 +2529,13 @@ const SelfServicePortal: React.FC = () => {
   function removeSource(kind: string) {
     setSources(prev => prev.filter(k => k !== kind));
     if (selectedSource === kind) setSelectedSource(null);
-    if (kind === 'Confluence') setConfluence({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00' });
+    if (kind === 'Confluence') setConfluence({ name: '', url: '', description: '', autoRefresh: true, frequency: 'Daily', time: '02:00' });
     if (kind === 'File Upload') setFileUpload({ name: '', description: '', autoRefresh: true, frequency: 'Weekly', time: '09:00', files: [] });
   }
 
+  /* =========================================================
+     Render
+     ========================================================= */
   return (
     <>
       {/* App Bar */}
@@ -2489,7 +2573,6 @@ const SelfServicePortal: React.FC = () => {
       {/* Content */}
       <main className={styles.page}>
         <div className={styles.container} style={{ minWidth: 0 }}>
-          {/* Tab pages */}
           {section === 'dashboard' && DashboardView}
           {section === 'knowledge' && KnowledgeSourcesView}
           {section === 'auto' && AutoRefreshView}
@@ -2567,12 +2650,6 @@ const SelfServicePortal: React.FC = () => {
                         <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'File Upload' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('File Upload')} aria-pressed={selectedSource === 'File Upload'}>
                           <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.File size={big} /></span><span className={styles.sourceBtnLabel}>File upload</span></span>
                         </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'SharePoint' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('SharePoint')} aria-pressed={selectedSource === 'SharePoint'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Globe size={big} /></span><span className={styles.sourceBtnLabel}>SharePoint</span></span>
-                        </button>
-                        <button type="button" className={`${styles.sourceBtn} ${selectedSource === 'OneDrive' ? styles.sourceBtnActive : ''}`} onClick={() => addSource('OneDrive')} aria-pressed={selectedSource === 'OneDrive'}>
-                          <span className={styles.sourceBtnInner}><span className={styles.sourceBtnIcon}><Icon.Cloud size={big} /></span><span className={styles.sourceBtnLabel}>OneDrive</span></span>
-                        </button>
                       </div>
 
                       {/* Confluence */}
@@ -2597,7 +2674,6 @@ const SelfServicePortal: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Submit for Confluence */}
                             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                               <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
                                 {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
@@ -2670,7 +2746,6 @@ const SelfServicePortal: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Submit for File upload */}
                             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                               <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={submitStep2Only} disabled={savingStep2 || step2Saved}>
                                 {savingStep2 ? 'Submitting…' : (step2Saved ? 'Submitted ✓' : 'Submit')}
@@ -2723,12 +2798,7 @@ const SelfServicePortal: React.FC = () => {
 
                   {/* Footer */}
                   <div className={styles.formFooter}>
-                    <button
-                      type="button"
-                      className={`${styles.btn} ${styles.btnGhost}`}
-                      onClick={goPrev}
-                      disabled={activeStep === 1 || processing || (activeStep === 2 && step2Saved)}
-                    >
+                    <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={goPrev} disabled={activeStep === 1 || processing || (activeStep === 2 && step2Saved)}>
                       Previous
                     </button>
                     <button
@@ -2758,5 +2828,3 @@ const SelfServicePortal: React.FC = () => {
 };
 
 export default SelfServicePortal;
-
-
